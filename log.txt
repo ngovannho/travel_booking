@@ -1,0 +1,16 @@
+Update booking 44 to balance_pending
+Update booking 45 to balance_pending
+Update booking 46 to balance_pending
+Update booking 47 to balance_pending
+Update booking 49 to balance_pending
+Update booking 50 to balance_pending
+Update booking 51 to balance_pending
+Update booking 52 to balance_pending
+Update booking 53 to balance_pending
+Update booking 54 to balance_pending
+Update booking 55 to balance_pending
+Update booking 57 to balance_pending
+Update booking 58 to balance_pending
+Update booking 63 to balance_pending
+Update booking 64 to balance_pending
+Update booking 65 to balance_pending
