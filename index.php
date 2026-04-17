@@ -24,22 +24,32 @@ $categories = $stmtCats->fetchAll();
 
 $stmtNews = $pdo->query("SELECT * FROM news ORDER BY id DESC LIMIT 3");
 $newsList = $stmtNews->fetchAll();
+
+// Lấy các đánh giá xuất sắc nhất (4-5 sao) để làm Testimonials
+$stmtTopReviews = $pdo->query("
+    SELECT r.*, u.fullname, t.title as tour_title 
+    FROM reviews r 
+    JOIN users u ON r.user_id = u.id 
+    JOIN tours t ON r.tour_id = t.id 
+    WHERE r.rating >= 4 ORDER BY r.created_at DESC LIMIT 3");
+$topReviews = $stmtTopReviews->fetchAll();
 ?>
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
-<div class="max-w-7xl mx-auto px-4 mt-8">
-    <header class="relative h-[400px] rounded-[2.5rem] overflow-hidden flex items-center justify-center text-white shadow-2xl">
-        <div class="absolute inset-0 bg-gradient-to-b from-black/20 to-black/60 z-10"></div>
+<div class="max-w-7xl mx-auto px-4 mt-6">
+    <!-- HERO SECTION NÂNG CẤP -->
+    <header class="relative h-[500px] rounded-[3.5rem] overflow-hidden flex items-center justify-center text-white shadow-2xl shadow-blue-900/20">
+        <div class="absolute inset-0 bg-gradient-to-b from-slate-900/40 via-slate-900/20 to-slate-900/80 z-10"></div>
         
         <div class="absolute inset-0 bg-[url('assets/uploads/banner.png')] bg-cover bg-center transition-transform duration-700 hover:scale-110"></div>
         
-        <div class="relative z-20 text-center px-6 w-full max-w-2xl">
-            <h1 class="text-4xl md:text-5xl font-black mb-4 uppercase tracking-tighter italic">
-                Hành trình mơ ước
+        <div class="relative z-20 text-center px-6 w-full max-w-3xl animate-in fade-in slide-in-from-bottom-10 duration-1000">
+            <h1 class="text-5xl md:text-7xl font-black mb-6 uppercase tracking-tighter italic leading-none">
+                Hành trình <span class="text-yellow-400">di sản</span>
             </h1>
             
-            <p class="text-sm md:text-base mb-8 font-medium text-gray-200 uppercase tracking-[0.3em]">
+            <p class="text-xs md:text-sm mb-10 font-bold text-gray-100 uppercase tracking-[0.4em] opacity-90">
                 Khám phá vẻ đẹp bất tận cùng Lily-Travel
             </p>
             
@@ -52,13 +62,44 @@ $newsList = $stmtNews->fetchAll();
                     autocomplete="off"
                 >
                 
-                <button class="bg-yellow-500 hover:bg-yellow-600 text-slate-900 px-6 py-3 rounded-xl font-black text-xs uppercase transition-all">
-                    Tìm kiếm
+                <button type="submit" class="bg-yellow-500 hover:bg-white hover:text-blue-600 text-slate-900 px-8 py-3 rounded-xl font-black text-xs uppercase transition-all shadow-xl">
+                    Khám phá ngay
                 </button>
                 <div class="search-suggestions absolute top-full left-0 w-full bg-white mt-2 rounded-2xl shadow-2xl z-50 hidden overflow-hidden border border-slate-100"></div>
             </form>
         </div>
     </header>
+
+    <!-- QUICK STATS / FEATURES -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-[-3rem] relative z-30 px-6">
+        <div class="bg-white/90 backdrop-blur-xl p-6 rounded-3xl shadow-xl border border-white flex items-center gap-5 group hover:bg-blue-600 transition-all duration-500">
+            <div class="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 group-hover:bg-white/20 group-hover:text-white transition-colors">
+                <i class="fas fa-shield-alt text-xl"></i>
+            </div>
+            <div>
+                <h4 class="font-black uppercase italic text-xs text-slate-800 group-hover:text-white leading-none mb-1">An toàn tuyệt đối</h4>
+                <p class="text-[10px] text-slate-400 group-hover:text-blue-100 uppercase font-bold tracking-widest">Bảo hiểm trọn gói</p>
+            </div>
+        </div>
+        <div class="bg-white/90 backdrop-blur-xl p-6 rounded-3xl shadow-xl border border-white flex items-center gap-5 group hover:bg-yellow-500 transition-all duration-500">
+            <div class="w-14 h-14 bg-yellow-50 rounded-2xl flex items-center justify-center text-yellow-600 group-hover:bg-white/20 group-hover:text-white transition-colors">
+                <i class="fas fa-tag text-xl"></i>
+            </div>
+            <div>
+                <h4 class="font-black uppercase italic text-xs text-slate-800 group-hover:text-white leading-none mb-1">Giá tốt nhất</h4>
+                <p class="text-[10px] text-slate-400 group-hover:text-yellow-50 uppercase font-bold tracking-widest">Cam kết không mất phí</p>
+            </div>
+        </div>
+        <div class="bg-white/90 backdrop-blur-xl p-6 rounded-3xl shadow-xl border border-white flex items-center gap-5 group hover:bg-slate-900 transition-all duration-500">
+            <div class="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-900 group-hover:bg-white/20 group-hover:text-white transition-colors">
+                <i class="fas fa-headset text-xl"></i>
+            </div>
+            <div>
+                <h4 class="font-black uppercase italic text-xs text-slate-800 group-hover:text-white leading-none mb-1">Hỗ trợ 24/7</h4>
+                <p class="text-[10px] text-slate-400 group-hover:text-slate-400 uppercase font-bold tracking-widest">Đồng hành mọi lúc,mọi nơi</p>
+            </div>
+        </div>
+    </div>
 </div>
 
 <main class="max-w-7xl mx-auto px-4 py-16">
@@ -68,46 +109,45 @@ $newsList = $stmtNews->fetchAll();
         <aside class="w-full lg:w-1/4">
             <div class="sticky top-28">
                 
-                <div class="group bg-slate-50/50 p-6 rounded-[2.5rem] border border-slate-100 hover:bg-white hover:shadow-2xl transition-all duration-500 cursor-default">
-                    <h3 class="text-xs font-black uppercase tracking-widest text-blue-600 flex items-center leading-none">
-                        <span class="w-6 h-1 bg-blue-600 rounded-full mr-3"></span> 
-                        Danh mục Tour
-                        <i class="fas fa-chevron-down ml-auto text-[8px] transition-transform duration-500 group-hover:rotate-180 opacity-40"></i>
-                    </h3>
+                <div class="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/50 group/sidebar">
+                    <div class="flex items-center justify-between cursor-default">
+                        <h3 class="text-xs font-black uppercase tracking-widest text-blue-600 flex items-center leading-none">
+                            <span class="w-6 h-1 bg-blue-600 rounded-full mr-3"></span> 
+                            Danh mục Tour
+                        </h3>
+                        <i class="fas fa-chevron-down text-[10px] text-slate-300 transition-transform duration-300 group-hover/sidebar:rotate-180 group-hover/sidebar:text-blue-500"></i>
+                    </div>
 
-                    <div class="space-y-2 max-h-0 opacity-0 overflow-hidden group-hover:max-h-[600px] group-hover:opacity-100 group-hover:mt-6 transition-all duration-700 ease-in-out">
-                        <a href="tours.php" class="flex items-center justify-between p-4 bg-white rounded-2xl border border-slate-50 hover:border-blue-100 hover:shadow-md transition-all group/item">
-                            <div class="flex items-center">
-                                <span class="font-bold text-gray-700 group-hover/item:text-blue-600">
+                    <div class="max-h-0 overflow-hidden group-hover/sidebar:max-h-[1000px] group-hover/sidebar:mt-8 transition-all duration-700 ease-in-out">
+                        <div class="flex flex-col gap-2">
+                            <a href="tours.php" class="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-transparent hover:bg-white hover:border-blue-100 hover:shadow-md transition-all group/item">
+                                <span class="text-[10px] font-black uppercase tracking-tighter text-slate-500 group-hover/item:text-blue-600">
                                     Tất cả chuyến đi
                                 </span>
-                            </div>
-                            <i class="fas fa-chevron-right text-[10px] text-gray-300 group-hover/item:text-blue-600"></i>
-                        </a>
-
-                        <?php foreach($categories as $cat): ?>
-                            <a href="tours.php?category=<?= $cat['id'] ?>" class="flex items-center justify-between p-4 bg-white rounded-2xl border border-slate-50 hover:border-blue-100 hover:shadow-md transition-all group/item">
-                                <div class="flex items-center">
-                                    <span class="font-bold text-gray-700 group-hover/item:text-blue-600">
+                                <span class="text-[10px] font-black text-slate-300 group-hover/item:text-blue-600"><?= $total_active_tours ?></span>
+                            </a>
+                            <?php foreach($categories as $cat): ?>
+                                <a href="tours.php?category=<?= $cat['id'] ?>" class="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-transparent hover:bg-white hover:border-blue-100 hover:shadow-md transition-all group/item">
+                                    <span class="text-[10px] font-black uppercase tracking-tighter text-slate-500 group-hover/item:text-blue-600">
                                         <?= htmlspecialchars($cat['name']) ?>
                                     </span>
-                                </div>
-                                <i class="fas fa-chevron-right text-[10px] text-gray-300 group-hover/item:text-blue-600"></i>
-                            </a>
-                        <?php endforeach; ?>
+                                    <span class="text-[10px] font-black text-slate-300 group-hover/item:text-blue-600"><?= $cat['tour_count'] ?></span>
+                                </a>
+                            <?php endforeach; ?>
+                        </div>
                     </div>
                 </div>
 
                 <!-- PROMO -->
-                <div class="mt-12 bg-slate-900 rounded-[2rem] p-8 text-white relative overflow-hidden shadow-xl">
+                <div class="mt-8 bg-slate-900 rounded-[2.5rem] p-10 text-white relative overflow-hidden shadow-2xl">
                     <div class="relative z-10">
-                        <h4 class="text-xl font-black leading-tight mb-4">
-                            Đặt tour ngay hôm nay
+                        <h4 class="text-2xl font-black-italic leading-none mb-4 uppercase tracking-tighter">
+                            Đặt Tour ngay!
                         </h4>
-                        <p class="text-xs text-gray-400 mb-6 font-medium">
-                            Đăng ký ngay hôm nay để nhận ưu đãi đặc biệt.
+                        <p class="text-[10px] text-gray-400 mb-8 font-bold uppercase tracking-[0.2em] leading-relaxed">
+                            Đăng ký ngay để nhận<br>mã giảm giá đến 35%.
                         </p>
-                        <button onclick="showPromoModal()" class="inline-block bg-blue-600 text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-500 transition-all">
+                        <button onclick="showPromoModal()" class="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-white hover:text-slate-900 transition-all shadow-xl">
                             <i class="fas fa-gift mr-2"></i> Nhận mã ngay
                         </button>
                     </div>
@@ -172,7 +212,7 @@ $newsList = $stmtNews->fetchAll();
         <!-- TOURS -->
         <section class="w-full lg:w-3/4">
             <div class="flex justify-between items-center mb-8">
-                <h2 class="text-2xl font-black text-gray-900 uppercase italic">
+                <h2 class="text-3xl font-black text-gray-900 uppercase italic tracking-tighter">
                     Chuyến đi mới nhất
                 </h2>
                 <a href="tours.php" class="text-[10px] font-black uppercase tracking-widest text-blue-600 hover:underline">
@@ -182,10 +222,10 @@ $newsList = $stmtNews->fetchAll();
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <?php foreach($tours as $tour): ?>
-                    <div class="bg-white rounded-[2rem] overflow-hidden border border-gray-100 hover:shadow-2xl transition-all duration-500 group">
+                    <div class="bg-white rounded-[2.5rem] overflow-hidden border border-slate-100 hover:shadow-2xl transition-all duration-500 group">
                         
                         <!-- Bọc ảnh trong container để làm hiệu ứng nhảy ảnh -->
-                        <div class="relative overflow-hidden h-56 tour-card-slider">
+                        <div class="relative overflow-hidden h-64 tour-card-slider">
                             <div class="flex h-full transition-transform duration-700 ease-in-out tour-track" style="transform: translateX(0%);">
                                 <?php 
                                     $all_imgs = [$tour['image'] ?: 'default-tour.jpg'];
@@ -209,14 +249,14 @@ $newsList = $stmtNews->fetchAll();
                                 </button>
                             <?php endif; ?>
 
-                            <div class="absolute top-4 left-4 bg-white/90 backdrop-blur px-3 py-1 rounded-lg text-[10px] font-black text-blue-600 shadow-sm uppercase">
+                            <div class="absolute top-6 left-6 bg-white/90 backdrop-blur px-4 py-1.5 rounded-xl text-[9px] font-black text-blue-600 shadow-sm uppercase tracking-widest">
                                 <?= $tour['duration'] ?>
                             </div>
                         </div>
 
-                        <div class="p-6">
+                        <div class="p-8">
                             <div class="flex justify-between items-start mb-3">
-                                <h3 class="text-lg font-bold text-gray-800 leading-tight pr-4">
+                                <h3 class="text-xl font-bold text-gray-800 leading-tight pr-4 min-h-[3.5rem] line-clamp-2 uppercase tracking-tighter italic">
                                     <?= htmlspecialchars($tour['title']) ?>
                                 </h3>
 
@@ -232,20 +272,20 @@ $newsList = $stmtNews->fetchAll();
                                 <div class="text-right min-w-fit">
                                     <p class="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1 italic">Giá tour từ</p>
                                     <div class="flex items-center justify-end gap-1.5">
-                                        <span class="text-lg font-black text-blue-600 tracking-tighter"><?= number_format($min_p, 0, ',', '.') ?>đ</span>
-                                        <span class="text-slate-300 font-black">-</span>
-                                        <span class="text-lg font-black text-blue-600 tracking-tighter"><?= number_format($max_p, 0, ',', '.') ?>đ</span>
+                                        <span class="text-2xl font-black text-blue-600 tracking-tighter"><?= number_format($min_p, 0, ',', '.') ?>đ</span>
                                     </div>
                                 </div>
                             </div>
 
-                            <div class="flex items-center justify-between pt-4 border-t border-gray-50 mt-4">
+                            <div class="flex items-center justify-between pt-6 border-t border-slate-50 mt-4">
                                 <div class="flex items-center text-gray-400 text-[10px] font-bold uppercase tracking-widest">
-                                    <i class="fas fa-map-marker-alt mr-2 text-blue-500"></i>
+                                    <div class="w-8 h-8 bg-slate-50 rounded-lg flex items-center justify-center mr-3">
+                                        <i class="fas fa-map-marker-alt text-blue-500"></i>
+                                    </div>
                                     <?= $tour['departure_location'] ?>
                                 </div>
 
-                                <a href="tour-detail.php?id=<?= $tour['id'] ?>" class="bg-gray-900 text-white px-5 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-colors shadow-lg shadow-gray-200">
+                                <a href="tour-detail.php?id=<?= $tour['id'] ?>" class="bg-slate-900 text-white px-8 py-3.5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-all shadow-xl shadow-slate-200">
                                     Chi tiết
                                 </a>
                             </div>
@@ -305,9 +345,80 @@ $newsList = $stmtNews->fetchAll();
         </div>
     </section>
 
+    <!-- TESTIMONIALS SECTION - MỚI -->
+    <?php if (!empty($topReviews)): ?>
+    <section class="mt-24 bg-blue-600 rounded-[4rem] p-12 md:p-20 text-white relative overflow-hidden shadow-2xl shadow-blue-200">
+        <div class="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32"></div>
+        <div class="relative z-10">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl font-black uppercase italic tracking-tighter mb-4">Khách hàng nói gì về chúng tôi</h2>
+                <div class="flex justify-center gap-1 text-yellow-400">
+                    <i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <?php foreach($topReviews as $rev): ?>
+                    <div class="bg-white/10 backdrop-blur-md p-8 rounded-[2.5rem] border border-white/20 hover:bg-white/20 transition-all group">
+                        <i class="fas fa-quote-left text-3xl text-yellow-400 mb-6 opacity-50"></i>
+                        <p class="text-sm font-medium italic leading-relaxed mb-8">"<?= htmlspecialchars($rev['comment']) ?>"</p>
+                        <div class="flex items-center gap-4">
+                            <img src="https://ui-avatars.com/api/?name=<?= urlencode($rev['fullname']) ?>&background=random" class="w-10 h-10 rounded-xl border-2 border-white/50">
+                            <div>
+                                <p class="text-[11px] font-black uppercase italic tracking-tighter"><?= htmlspecialchars($rev['fullname']) ?></p>
+                                <p class="text-[9px] font-bold text-blue-200 uppercase tracking-widest"><?= htmlspecialchars($rev['tour_title']) ?></p>
+                            </div>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    </section>
+    <?php endif; ?>
+
+    <!-- NEWSLETTER SECTION - MỚI -->
+    <section class="mt-24 text-center max-w-4xl mx-auto">
+        <div class="bg-white p-12 md:p-16 rounded-[4rem] shadow-xl border border-slate-50 relative overflow-hidden">
+            <div class="absolute -left-10 -bottom-10 w-40 h-40 bg-slate-50 rounded-full"></div>
+            
+            <div class="relative z-10">
+                <div class="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-8 text-2xl">
+                    <i class="fas fa-paper-plane"></i>
+                </div>
+                <h2 class="text-3xl font-black text-slate-900 uppercase italic tracking-tighter mb-4">
+                    Đừng bỏ lỡ những ưu đãi hấp dẫn!
+                </h2>
+                <p class="text-xs text-slate-400 font-bold uppercase tracking-[0.3em] mb-10">
+                    Đăng ký nhận bản tin để cập nhật các tour mới nhất và mã giảm giá độc quyền.
+                </p>
+                
+                <form onsubmit="event.preventDefault(); Swal.fire({icon: 'success', title: 'Thành công', text: 'Cảm ơn bạn đã đăng ký!', customClass: {popup: 'rounded-[2.5rem]'}});" class="flex flex-col md:flex-row gap-4 max-w-2xl mx-auto">
+                    <input type="email" required placeholder="Địa chỉ email của bạn..." 
+                           class="flex-1 px-8 py-5 bg-slate-50 border-0 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all">
+                    <button type="submit" class="bg-slate-900 text-white px-10 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-all shadow-xl">
+                        Đăng ký ngay
+                    </button>
+                </form>
+            </div>
+        </div>
+    </section>
+
 </main>
 
 <script>
+    function toggleCategoryList() {
+        const container = document.getElementById('category-list-container');
+        const icon = document.getElementById('cat-toggle-icon');
+        
+        if (container.classList.contains('hidden')) {
+            container.classList.remove('hidden');
+            icon.classList.remove('rotate-180');
+        } else {
+            container.classList.add('hidden');
+            icon.classList.add('rotate-180');
+        }
+    }
+
     // Khởi tạo các slider cho card tour
     const cardSliders = [];
 
@@ -360,6 +471,33 @@ $newsList = $stmtNews->fetchAll();
 
     // Chạy khi DOM sẵn sàng
     document.addEventListener('DOMContentLoaded', initSliders);
+</script>
+
+<script>
+    // Kiểm tra kết quả trả về từ MoMo khi quay lại trang chủ
+    <?php if (isset($_GET['resultCode'])): ?>
+        const resultCode = "<?= htmlspecialchars($_GET['resultCode']) ?>";
+        if (resultCode === "0") {
+            Swal.fire({
+                title: '<span class="uppercase font-black text-sm italic tracking-widest text-emerald-600">Thanh toán thành công!</span>',
+                html: '<p class="text-xs font-bold text-slate-500 uppercase tracking-tighter">Cảm ơn bạn đã tin tưởng Lily Travel. Chuyến đi của bạn đã sẵn sàng!</p>',
+                icon: 'success',
+                confirmButtonColor: '#0f172a',
+                customClass: { popup: 'rounded-[3rem]', confirmButton: 'rounded-xl px-12 py-4 font-black uppercase text-[10px] tracking-widest' }
+            }).then(() => {
+                // Làm sạch URL để tránh hiện lại thông báo khi F5
+                window.history.replaceState({}, document.title, window.location.pathname);
+            });
+        } else {
+            Swal.fire({
+                title: '<span class="uppercase font-black text-sm italic tracking-widest text-red-500">Thanh toán thất bại</span>',
+                text: 'Giao dịch không thành công hoặc đã bị hủy. Vui lòng thử lại hoặc liên hệ hỗ trợ.',
+                icon: 'error',
+                confirmButtonColor: '#0f172a',
+                customClass: { popup: 'rounded-[3rem]', confirmButton: 'rounded-xl px-12 py-4 font-black uppercase text-[10px] tracking-widest' }
+            });
+        }
+    <?php endif; ?>
 </script>
 
 <?php include 'footer.php'; ?>

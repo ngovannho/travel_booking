@@ -1,5 +1,7 @@
 <?php
 require_once 'config.php';
+require_once 'mail_helper.php';
+
 session_start();
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
@@ -17,6 +19,38 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $stmt = $pdo->prepare("INSERT INTO users (username, password, fullname, email, role) VALUES (?, ?, ?, ?, 'user')");
         if ($stmt->execute([$username, $password, $fullname, $email])) {
             $new_user_id = $pdo->lastInsertId();
+
+            // Gửi email chào mừng thành viên mới
+            $subject = "Chào mừng bạn đến với Lily Travel!";
+            $body = "
+                    <html>
+                    <body style='font-family: Arial, sans-serif; color: #334155; padding: 20px;'>
+                        <div style='max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 24px; overflow: hidden; background: #ffffff;'>
+                            <div style='background: #2563eb; padding: 40px; text-align: center;'>
+                                <div style='color: #fbbf24; font-size: 24px; font-weight: 900; font-style: italic; margin-bottom: 10px;'>LILY-TRAVEL</div>
+                                <h2 style='color: white; margin: 0; text-transform: uppercase; font-size: 18px; letter-spacing: 2px;'>Chào mừng thành viên mới</h2>
+                            </div>
+                            <div style='padding: 40px;'>
+                                <p style='font-size: 16px;'>Xin chào <b>$fullname</b>,</p>
+                                <p>Cảm ơn bạn đã đăng ký tài khoản tại <b>Lily Travel</b>. Chúng tôi rất vui mừng được đồng hành cùng bạn trong những hành trình khám phá sắp tới.</p>
+                                
+                                <div style='background: #f8fafc; border-radius: 20px; padding: 25px; margin: 30px 0; border: 1px solid #f1f5f9; text-align: center;'>
+                                    <p style='margin: 0; font-size: 12px; color: #64748b; text-transform: uppercase;'>Quà tặng ra mắt</p>
+                                    <p style='margin: 10px 0; font-size: 24px; font-weight: 900; color: #2563eb;'>Mã: HELLO</p>
+                                    <p style='margin: 0; font-size: 11px; color: #94a3b8;'>Sử dụng mã này cho lần đặt tour đầu tiên của bạn để nhận ưu đãi!</p>
+                                </div>
+
+                                <p style='font-size: 14px; line-height: 1.6;'>Bạn có thể đăng nhập ngay để xem các tour du lịch hot nhất và quản lý hành trình của mình.</p>
+                                
+                                <div style='text-align: center; margin-top: 40px;'>
+                                    <a href='" . BASE_URL . "login.php' style='background: #0f172a; color: #ffffff; padding: 18px 35px; text-decoration: none; border-radius: 15px; font-weight: 900; font-size: 11px; letter-spacing: 1px; display: inline-block; text-transform: uppercase;'>Đăng nhập tài khoản</a>
+                                </div>
+                            </div>
+                        </div>
+                    </body>
+                    </html>
+                ";
+            sendEmail($email, $fullname, $subject, $body);
 
             // Tự động tặng mã giảm giá 'HELLO' cho thành viên mới
             $promo_stmt = $pdo->prepare("SELECT id, usage_limit FROM promos WHERE code = 'HELLO' LIMIT 1");

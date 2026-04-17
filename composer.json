@@ -1,0 +1,6 @@
+{
+    "name": "lily-travel/booking-system",
+    "require": {
+        "phpmailer/phpmailer": "^7.0"
+    }
+}

@@ -4,18 +4,32 @@ include 'header.php';
 
 $search = $_GET['search'] ?? '';
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+$role_filter = $_GET['role'] ?? '';
 $limit = 5;
 $offset = ($page - 1) * $limit;
 
-$count_sql = "SELECT COUNT(*) FROM users WHERE fullname LIKE ? OR email LIKE ?";
+$where = "WHERE (u.fullname LIKE ? OR u.email LIKE ?)";
+$params = ["%$search%", "%$search%"];
+
+if ($role_filter) {
+    $where .= " AND u.role = ?";
+    $params[] = $role_filter;
+}
+
+$count_sql = "SELECT COUNT(*) FROM users u $where";
 $count_stmt = $pdo->prepare($count_sql);
-$count_stmt->execute(["%$search%", "%$search%"]);
+$count_stmt->execute($params);
 $total_rows = $count_stmt->fetchColumn();
 $total_pages = ceil($total_rows / $limit);
 
-$sql = "SELECT * FROM users WHERE fullname LIKE ? OR email LIKE ? ORDER BY id DESC LIMIT $limit OFFSET $offset";
+$sql = "SELECT u.*, r.name as rank_name, r.color as rank_color, r.icon as rank_icon,
+        (SELECT SUM(total_price) FROM bookings WHERE user_id = u.id AND status = 'completed') as total_spent
+        FROM users u 
+        LEFT JOIN ranks r ON u.rank_id = r.id
+$where 
+        ORDER BY u.id DESC LIMIT $limit OFFSET $offset";
 $stmt = $pdo->prepare($sql);
-$stmt->execute(["%$search%", "%$search%"]);
+$stmt->execute($params);
 $users = $stmt->fetchAll();
 ?>
 
@@ -26,12 +40,26 @@ $users = $stmt->fetchAll();
     </button>
 </div>
 
-<div class="mb-6">
-    <form method="GET" class="relative w-full">
+<div class="mb-8 flex flex-col md:flex-row gap-4">
+    <form method="GET" class="relative flex-1">
         <input type="text" name="search" value="<?= htmlspecialchars($search) ?>" placeholder="Tìm kiếm tên, email..." 
                class="w-full pl-12 pr-4 py-4 bg-white border-0 shadow-sm rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none text-sm">
         <span class="absolute left-4 top-4 text-gray-400"><i class="fas fa-search fa-lg"></i></span>
+        <?php if($role_filter): ?><input type="hidden" name="role" value="<?= $role_filter ?>"><?php endif; ?>
     </form>
+    
+    <div class="flex bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 overflow-x-auto">
+        <?php 
+        $role_options = [
+            '' => 'Tất cả',
+            'user' => 'Khách hàng',
+            'admin' => 'Quản trị'
+        ];
+        foreach($role_options as $val => $label): ?>
+            <a href="?role=<?= $val ?>&search=<?= $search ?>" 
+               class="px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider whitespace-nowrap transition-all <?= $role_filter === $val ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:text-slate-900' ?>"><?= $label ?></a>
+        <?php endforeach; ?>
+    </div>
 </div>
 
 <div class="block md:hidden space-y-4">
@@ -69,38 +97,48 @@ $users = $stmt->fetchAll();
 <div class="hidden md:block bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
     <table class="w-full text-left">
         <thead>
-            <tr class="bg-gray-50/50 text-gray-400 text-[10px] uppercase font-black tracking-widest border-b border-gray-100">
-                <th class="px-8 py-5">ID</th>
-                <th class="px-8 py-5">Thành viên</th>
-                <th class="px-8 py-5">SĐT</th>
-                <th class="px-8 py-5">Vai trò</th>
-                <th class="px-8 py-5 text-center">Thao tác</th>
+            <tr class="bg-gray-50/50 text-gray-400 text-[9px] uppercase font-black tracking-widest border-b border-gray-100">
+                <th class="px-6 py-4">ID</th>
+                <th class="px-6 py-4">Thành viên</th>
+                <th class="px-6 py-4">Hạng & Điểm</th>
+                <th class="px-6 py-4 text-center">Tổng chi tiêu</th>
+                <th class="px-6 py-4">Vai trò</th>
+                <th class="px-6 py-4 text-center">Thao tác</th>
             </tr>
         </thead>
         <tbody class="divide-y divide-gray-100">
             <?php foreach($users as $user): ?>
             <tr class="hover:bg-gray-50/50 transition">
-                <td class="px-8 py-5 text-sm font-bold text-gray-300"><?= $user['id'] ?></td>
-                <td class="px-8 py-5">
+                <td class="px-6 py-4 text-xs font-bold text-gray-300"><?= $user['id'] ?></td>
+                <td class="px-6 py-4">
                     <div class="flex items-center">
-                        <img src="https://ui-avatars.com/api/?name=<?= urlencode($user['fullname']) ?>&background=random" class="w-10 h-10 rounded-xl mr-4">
+                        <img src="https://ui-avatars.com/api/?name=<?= urlencode($user['fullname']) ?>&background=random" class="w-8 h-8 rounded-lg mr-3">
                         <div>
-                            <div class="text-sm font-bold text-gray-900 leading-tight"><?= htmlspecialchars($user['fullname']) ?></div>
+                            <div class="text-xs font-bold text-gray-900 leading-tight"><?= htmlspecialchars($user['fullname']) ?></div>
                             <div class="text-xs text-gray-500 mt-0.5"><?= htmlspecialchars($user['email']) ?></div>
                         </div>
                     </div>
                 </td>
-                <td class="px-8 py-5 text-sm font-medium text-gray-600"><?= $user['phone'] ?: 'N/A' ?></td>
-                <td class="px-8 py-5">
-                    <span class="px-3 py-1 rounded-full text-[10px] font-black uppercase border <?= $user['role'] == 'admin' ? 'bg-purple-50 text-purple-600 border-purple-100' : 'bg-blue-50 text-blue-600 border-blue-100' ?>">
+                <td class="px-6 py-4">
+                    <div class="flex items-center gap-2">
+                        <i class="fas <?= $user['rank_icon'] ?> <?= $user['rank_color'] ?> text-xs"></i>
+                        <span class="text-[10px] font-black uppercase <?= $user['rank_color'] ?>"><?= $user['rank_name'] ?></span>
+                    </div>
+                    <div class="text-[9px] font-bold text-slate-400 mt-1"><?= number_format($user['loyalty_points']) ?> điểm</div>
+                </td>
+                <td class="px-6 py-4 text-center text-xs font-black text-emerald-600">
+                    <?= number_format($user['total_spent'] ?: 0, 0, ',', '.') ?>đ
+                </td>
+                <td class="px-6 py-4">
+                    <span class="px-2 py-0.5 rounded-md text-[8px] font-black uppercase border <?= $user['role'] == 'admin' ? 'bg-purple-50 text-purple-600 border-purple-100' : 'bg-blue-50 text-blue-600 border-blue-100' ?>">
                         <?= $user['role'] ?>
                     </span>
                 </td>
-                <td class="px-8 py-5">
-                    <div class="flex justify-center space-x-3">
-                        <button onclick='openUserModal("edit", <?= json_encode($user) ?>)' class="text-blue-500 hover:text-blue-700"><i class="fas fa-edit"></i></button>
+                <td class="px-6 py-4">
+                    <div class="flex justify-center gap-2">
+                        <button onclick='openUserModal("edit", <?= json_encode($user) ?>)' class="text-blue-500 hover:text-blue-700 text-sm"><i class="fas fa-edit"></i></button>
                         <?php if($user['id'] != $_SESSION['user']['id']): ?>
-                        <button onclick="confirmDelete(<?= $user['id'] ?>)" class="text-red-400 hover:text-red-600"><i class="fas fa-trash-alt"></i></button>
+                        <button onclick="confirmDelete(<?= $user['id'] ?>)" class="text-red-400 hover:text-red-600 text-sm"><i class="fas fa-trash-alt"></i></button>
                         <?php endif; ?>
                     </div>
                 </td>
@@ -110,16 +148,7 @@ $users = $stmt->fetchAll();
     </table>
 </div>
 
-<?php if($total_pages > 1): ?>
-<div class="mt-8 flex justify-center items-center space-x-2">
-    <?php for($i = 1; $i <= $total_pages; $i++): ?>
-        <a href="?page=<?= $i ?>&search=<?= $search ?>" 
-           class="w-12 h-12 flex items-center justify-center rounded-2xl text-sm font-bold transition <?= $i == $page ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'bg-white text-gray-400 hover:text-blue-600 border border-gray-100' ?>">
-            <?= $i ?>
-        </a>
-    <?php endfor; ?>
-</div>
-<?php endif; ?>
+<?= renderAdminPagination($page, $total_pages, $_GET) ?>
 
 <div id="userModal" class="fixed inset-0 bg-slate-900/60 z-[70] hidden flex items-center justify-center p-4 backdrop-blur-sm">
     <div class="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden transform transition-all scale-95 opacity-0 duration-300" id="modalContent">

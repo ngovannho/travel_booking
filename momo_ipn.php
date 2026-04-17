@@ -1,136 +1,159 @@
 <?php
 require_once 'config.php';
+require_once 'mail_helper.php';
 
-// Ghi log mọi yêu cầu IPN nhận được để dễ dàng debug
-file_put_contents('momo_ipn_log.txt', "[" . date('Y-m-d H:i:s') . "] IPN Request: " . file_get_contents('php://input') . "\n", FILE_APPEND);
+header("content-type: application/json; charset=UTF-8");
+http_response_code(200); //200 - Everything will be 200 Oke
 
-// CẤU HÌNH MOMO (Phải giống với cấu hình trong booking_process.php)
-$partnerCode = 'MOMOBKUN20180529'; // Mã đối tác (Ví dụ)
-$accessKey = 'klm05E67vDtm98Rz';     // Access Key (Ví dụ)
-$secretKey = 'at67qH6mk8w5Y1SVR0E477sqLE0W9f7a'; // Secret Key (Ví dụ)
+if (!empty($_POST)) {
+    $response = array();
+    try {
+        // Cấu hình mã bí mật (Phải khớp với booking_process.php)
+        $accessKey = "klm05TvNBzhg7h7j";
+        $secretKey = "at67qH6mk8w5Y1nAyMoYKMWACiEi2bsa";
 
-// Lấy dữ liệu IPN từ MoMo
-$ipnData = json_decode(file_get_contents('php://input'), true);
+        $partnerCode = $_POST["partnerCode"];
+		$orderId = $_POST["orderId"];
+		$requestId = $_POST["requestId"];
+		$amount = $_POST["amount"];	
+		$orderInfo = $_POST["orderInfo"];
+		$orderType = $_POST["orderType"];
+		$transId = $_POST["transId"];
+		$resultCode = $_POST["resultCode"];
+		$message = $_POST["message"];
+		$payType = $_POST["payType"];
+		$responseTime = $_POST["responseTime"];
+		$extraData = $_POST["extraData"];
+		$m2signature = $_POST["signature"]; //MoMo signature
+		
 
-if (empty($ipnData)) {
-    // Phản hồi lỗi nếu không có dữ liệu
-    echo json_encode(['message' => 'Empty IPN data', 'resultCode' => 1]);
-    exit;
-}
+		//Checksum
+		$rawHash = "accessKey=" . $accessKey . "&amount=" . $amount . "&extraData=" . $extraData . "&message=" . $message . "&orderId=" . $orderId . "&orderInfo=" . $orderInfo .
+			"&orderType=" . $orderType . "&partnerCode=" . $partnerCode . "&payType=" . $payType . "&requestId=" . $requestId . "&responseTime=" . $responseTime .
+			"&resultCode=" . $resultCode . "&transId=" . $transId;
 
-$message = '';
-$resultCode = 0; // 0 là thành công, khác 0 là lỗi
+        $partnerSignature = hash_hmac("sha256", $rawHash, $secretKey);
 
-try {
-    // 1. Lấy các tham số cần thiết từ IPN data
-    $partnerCode = $ipnData['partnerCode'];
-    $orderId = $ipnData['orderId'];
-    $requestId = $ipnData['requestId'];
-    $amount = $ipnData['amount'];
-    $orderInfo = $ipnData['orderInfo'];
-    $orderType = $ipnData['orderType'];
-    $transId = $ipnData['transId'];
-    $resultCode = $ipnData['resultCode'];
-    $message = $ipnData['message'];
-    $payType = $ipnData['payType'];
-    $responseTime = $ipnData['responseTime'];
-    $extraData = $ipnData['extraData'];
-    $signature = $ipnData['signature'];
+        if ($m2signature == $partnerSignature) {
+            if ($resultCode == '0') {
+                // 1. Lấy ID đơn hàng từ orderId (Tách lấy phần trước dấu gạch dưới)
+                $booking_id = explode("_", $orderId)[0];
 
-    // 2. Tạo chữ ký để xác thực
-    // Sắp xếp theo thứ tự bảng chữ cái: accessKey, amount, extraData, message, orderId, orderInfo, orderType, partnerCode, payType, requestId, responseTime, resultCode, transId
-    $rawHash = "accessKey=" . $accessKey . "&amount=" . $amount . "&extraData=" . $extraData . "&message=" . $message . "&orderId=" . $orderId . "&orderInfo=" . $orderInfo . "&orderType=" . $orderType . "&partnerCode=" . $partnerCode . "&payType=" . $payType . "&requestId=" . $requestId . "&responseTime=" . $responseTime . "&resultCode=" . $resultCode . "&transId=" . $transId;
-    $expectedSignature = hash_hmac("sha256", $rawHash, $secretKey);
+                // 2. Cập nhật trạng thái đơn hàng trong DB
+                $stmtUpdate = $pdo->prepare("UPDATE bookings SET status = 'completed', momo_trans_id = ? WHERE id = ? AND status = 'pending'");
+                $stmtUpdate->execute([$transId, $booking_id]);
 
-    // 3. Xác thực chữ ký
-    if ($signature !== $expectedSignature) {
-        throw new Exception("Invalid signature: " . $signature);
-    }
+                // 3. Lấy thông tin khách hàng và tour để gửi email
+                $stmtInfo = $pdo->prepare("SELECT b.*, t.title, t.image, t.duration, t.departure_location, t.content FROM bookings b JOIN tours t ON b.tour_id = t.id WHERE b.id = ?");
+                $stmtInfo->execute([$booking_id]);
+                $booking = $stmtInfo->fetch();
 
-    // 4. Xử lý kết quả thanh toán
-    if ($resultCode == 0) { // Thanh toán thành công
-        $booking_id = (int)$orderId;
-
-        // Cập nhật trạng thái đơn hàng trong DB
-        $stmt = $pdo->prepare("UPDATE bookings SET status = 'completed', payment_method = 'MoMo', transaction_id = ? WHERE id = ? AND status = 'pending'");
-        $stmt->execute([$transId, $booking_id]);
-
-        if ($stmt->rowCount() > 0) {
-            // Lấy thông tin booking để gửi email và thông báo
-            $info = $pdo->prepare("SELECT b.*, t.title FROM bookings b JOIN tours t ON b.tour_id = t.id WHERE b.id = ?");
-            $info->execute([$booking_id]);
-            $booking = $info->fetch();
-
-            if ($booking) {
-                // Logic tích điểm và nâng hạng khi hoàn tất tour
-                // (Đoạn code này đã có trong admin/booking_process.php, bạn có thể tái sử dụng hoặc gọi một hàm chung)
-                $points_earned = floor($booking['total_price'] / 100000); 
-                $pdo->prepare("UPDATE users SET loyalty_points = loyalty_points + ? WHERE id = ?")->execute([$points_earned, $booking['user_id']]);
-                $pdo->prepare("UPDATE users u SET rank_id = (SELECT id FROM ranks r WHERE u.loyalty_points >= r.min_points ORDER BY r.min_points DESC LIMIT 1) WHERE id = ?")->execute([$booking['user_id']]);
-                
-                // Lấy thông tin user sau khi cập nhật (điểm và hạng mới) để kiểm tra thăng hạng
-                $new_user_data_stmt = $pdo->prepare("SELECT u.loyalty_points, u.rank_id, r.name as rank_name, r.rank_up_promo_code FROM users u JOIN ranks r ON u.rank_id = r.id WHERE u.id = ?");
-                $new_user_data_stmt->execute([$booking['user_id']]);
-                $new_user_data = $new_user_data_stmt->fetch();
-                $new_rank_id = $new_user_data['rank_id'];
-                $rank_up_promo_code = $new_user_data['rank_up_promo_code'];
-
-                // Gửi thông báo cho người dùng
-                $pdo->prepare("INSERT INTO notifications (user_id, title, message, type, link) VALUES (?, ?, ?, ?, ?)")
-                    ->execute([$booking['user_id'], "Thanh toán thành công!", "Đơn hàng #$booking_id đã được thanh toán 100% qua MoMo. Chúc bạn có chuyến đi vui vẻ!", "payment", "profile.php?tab=tours"]);
-                
-                // Gửi email xác nhận thanh toán cho khách hàng
-                $to = $booking['customer_email'];
-                $subject = "=?UTF-8?B?".base64_encode("Xác nhận thanh toán Tour: " . $booking['title'])."?=";
-                $message_email = "
-                    <html>
-                    <body style='font-family: Arial, sans-serif; color: #334155; padding: 20px;'>
-                        <div style='max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden; background: #ffffff;'>
-                            <div style='background: #10b981; padding: 30px; text-align: center;'>
-                                <h2 style='color: white; margin: 0; text-transform: uppercase; font-size: 20px;'>THANH TOÁN THÀNH CÔNG</h2>
-                            </div>
-                            <div style='padding: 40px;'>
-                                <p style='font-size: 16px;'>Chào <b>{$booking['customer_name']}</b>,</p>
-                                <p>Lily Travel xác nhận bạn đã thanh toán thành công 100% cho đơn hàng <b>#{$booking_id}</b> qua MoMo.</p>
-                                <div style='background: #f8fafc; border: 2px solid #e2e8f0; padding: 20px; border-radius: 15px; text-align: center; margin: 25px 0;'>
-                                    <div style='font-size: 12px; color: #64748b; margin-bottom: 5px;'>TRẠNG THÁI HIỆN TẠI</div>
-                                    <div style='color: #10b981; font-weight: 900; font-size: 22px; text-transform: uppercase; font-style: italic;'>ĐÃ HOÀN TẤT</div>
+                if ($booking) {
+                    // 4. Gửi email cảm ơn
+                    $to = $booking['customer_email'];
+                    $subject = "Cảm ơn bạn đã đặt tour tại Lily Travel: " . $booking['title'];
+                    
+                    $message = "
+                        <html>
+                        <body style='font-family: Arial, sans-serif; color: #334155; padding: 20px;'>
+                            <div style='max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 24px; overflow: hidden; background: #ffffff; shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);'>
+                                <div style='background: #2563eb; padding: 40px; text-align: center;'>
+                                    <div style='color: #fbbf24; font-size: 24px; font-weight: 900; font-style: italic; margin-bottom: 10px;'>LILY-TRAVEL</div>
+                                    <h2 style='color: white; margin: 0; text-transform: uppercase; font-size: 18px; letter-spacing: 2px;'>Thanh toán thành công</h2>
                                 </div>
-                                <table style='width: 100%; font-size: 14px; color: #64748b;'>
-                                    <tr><td style='padding: 8px 0;'>Chuyến đi:</td><td style='text-align: right; font-weight: 700;'>{$booking['title']}</td></tr>
-                                    <tr><td style='padding: 8px 0;'>Tổng cộng:</td><td style='text-align: right; font-weight: 700; color: #2563eb;'>" . number_format($booking['total_price'], 0, ',', '.') . "đ</td></tr>
-                                    <tr><td style='padding: 8px 0;'>Mã giao dịch MoMo:</td><td style='text-align: right; font-weight: 700;'>$transId</td></tr>
-                                </table>
-                                <p style='margin-top: 30px; font-size: 13px; color: #64748b;'>Cảm ơn bạn đã tin tưởng Lily Travel. Chúc bạn có một chuyến đi thật vui vẻ và đáng nhớ!</p>
-                                <div style='text-align: center; margin-top: 40px;'>
-                                    <a href='http://localhost/travel_booking/profile.php?tab=tours' style='background: #1e293b; color: #ffffff; padding: 15px 30px; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 12px;'>XEM CHI TIẾT ĐƠN HÀNG</a>
+                                <div style='padding: 40px;'>
+                                    <p style='font-size: 16px;'>Xin chào <b>{$booking['customer_name']}</b>,</p>
+                                    <p>Cảm ơn bạn đã tin tưởng lựa chọn Lily Travel. Giao dịch qua MoMo cho đơn hàng <b>#{$booking_id}</b> đã được xác nhận thành công.</p>
+                                    
+                                    <!-- QR Code Check-in -->
+                                    <div style='text-align: center; margin: 30px 0;'>
+                                        <p style='font-size: 10px; color: #94a3b8; text-transform: uppercase; margin-bottom: 10px;'>Mã QR Check-in của bạn</p>
+                                        <img src='https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=$booking_id' alt='QR Code Check-in' style='border: 4px solid #f1f5f9; border-radius: 15px;'>
+                                    </div>
+                                    
+                                    <div style='background: #f8fafc; border-radius: 20px; padding: 25px; margin: 30px 0; border: 1px solid #f1f5f9;'>
+                                        <table style='width: 100%; border-collapse: collapse;'>
+                                            <tr>
+                                                <td style='padding-bottom: 15px; color: #64748b; font-size: 12px; text-transform: uppercase;'>Chuyến đi của bạn</td>
+                                                <td style='padding-bottom: 15px; text-align: right; font-weight: 700; color: #0f172a;'>{$booking['title']}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style='padding-bottom: 15px; color: #64748b; font-size: 12px; text-transform: uppercase;'>Thời lượng / Khởi hành từ</td>
+                                                <td style='padding-bottom: 15px; text-align: right; font-weight: 700; color: #0f172a;'>{$booking['duration']} / {$booking['departure_location']}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style='padding-bottom: 15px; color: #64748b; font-size: 12px; text-transform: uppercase;'>Ngày khởi hành</td>
+                                                <td style='padding-bottom: 15px; text-align: right; font-weight: 700; color: #0f172a;'>{$booking['departure_date']}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style='padding-bottom: 15px; color: #64748b; font-size: 12px; text-transform: uppercase;'>Số lượng khách</td>
+                                                <td style='padding-bottom: 15px; text-align: right; font-weight: 700; color: #0f172a;'>{$booking['num_adults']} NL, {$booking['num_children']} TE, {$booking['num_infants']} NCT</td>
+                                            </tr>
+                                            <tr>
+                                                <td style='padding-bottom: 15px; color: #64748b; font-size: 12px; text-transform: uppercase;'>Số điện thoại</td>
+                                                <td style='padding-bottom: 15px; text-align: right; font-weight: 700; color: #0f172a;'>{$booking['customer_phone']}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style='padding-top: 15px; border-top: 1px dashed #e2e8f0; color: #64748b; font-size: 12px; text-transform: uppercase;'>Tổng thanh toán</td>
+                                                <td style='padding-top: 15px; border-top: 1px dashed #e2e8f0; text-align: right; font-weight: 900; color: #2563eb; font-size: 18px;'>" . number_format($booking['total_price'], 0, ',', '.') . "đ</td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                    <div style='margin-top: 30px; padding: 25px; background: #f8fafc; border-radius: 20px; border: 1px solid #f1f5f9;'>
+                                        <h3 style='font-size: 14px; font-weight: 900; color: #2563eb; text-transform: uppercase; margin-bottom: 15px;'>Lịch trình chi tiết</h3>
+                                        <div style='font-size: 13px; line-height: 1.8; color: #334155;'>{$booking['content']}</div>
+                                    </div>
+
+                                    <p style='font-size: 14px; line-height: 1.6;'>Hệ thống đã tự động ghi nhận lịch trình của bạn. Bạn có thể xem lại chi tiết vé và nhận thông báo mới nhất tại trang cá nhân.</p>
+                                    
+                                    <div style='text-align: center; margin-top: 40px;'>
+                                        <a href='" . rtrim(BASE_URL, '/') . "/profile.php?tab=tours&booking_id=$booking_id' style='background: #0f172a; color: #ffffff; padding: 18px 35px; text-decoration: none; border-radius: 15px; font-weight: 900; font-size: 11px; letter-spacing: 1px; display: inline-block; text-transform: uppercase;'>CHI TIẾT ĐƠN HÀNG</a>
+                                    </div>
+                                </div>
+                                <div style='background: #f8fafc; padding: 30px; text-align: center; border-top: 1px solid #f1f5f9;'>
+                                    <p style='margin: 0; font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 2px;'>Lily Travel - Hành trình di sản của bạn</p>
+                                    <p style='margin: 10px 0 0; font-size: 10px; color: #cbd5e1;'>Hotline: 0777454550 | Email: contact@lilytravel.com</p>
                                 </div>
                             </div>
-                            <div style='background: #f8fafc; padding: 20px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #f1f5f9;'>
-                                Lily Travel - Kiến tạo hành trình mơ ước của bạn
-                            </div>
-                        </div>
-                    </body>
-                    </html>
-                ";
-                $headers = "MIME-Version: 1.0" . "\r\n";
-                $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
-                $headers .= "From: Lily Travel <noreply@lilytravel.com>" . "\r\n";
-                @mail($to, $subject, $message_email, $headers);
+                        </body>
+                        </html>
+                    ";
+
+                    sendEmail($to, $booking['customer_name'], $subject, $message);
+
+                    // 5. Logic tích điểm (Tương tự admin/booking_process.php)
+                    $points_earned = floor($booking['total_price'] / 100000); 
+                    $pdo->prepare("UPDATE users SET loyalty_points = loyalty_points + ? WHERE id = ?")
+                        ->execute([$points_earned, $booking['user_id']]);
+                    
+                    // Cập nhật hạng
+                    $pdo->prepare("UPDATE users u 
+                                   SET rank_id = (SELECT id FROM ranks r WHERE u.loyalty_points >= r.min_points ORDER BY r.min_points DESC LIMIT 1)
+                                   WHERE id = ?")
+                        ->execute([$booking['user_id']]);
+
+                    // Thêm thông báo trên hệ thống
+                    $pdo->prepare("INSERT INTO notifications (user_id, title, message, type, link) VALUES (?, ?, ?, ?, ?)")
+                        ->execute([
+                            $booking['user_id'], 
+                            "Thanh toán thành công!", 
+                            "Đơn hàng #$booking_id đã được thanh toán qua MoMo. Chúc bạn có chuyến đi vui vẻ!", 
+                            "payment", 
+                            "profile.php?tab=tours"
+                        ]);
+                }
+
+                $response['message'] = "Received payment result success";
+            } else {
+                $response['message'] = "Payment failed with resultCode: " . $resultCode;
             }
+        } else {
+            $response['message'] = "ERROR! Fail checksum";
         }
-    } else {
-        // Thanh toán thất bại hoặc bị hủy
-        // Có thể cập nhật trạng thái đơn hàng thành 'failed' hoặc 'cancelled' nếu cần
-        $stmt = $pdo->prepare("UPDATE bookings SET status = 'failed', payment_method = 'MoMo', transaction_id = ? WHERE id = ? AND status = 'pending'");
-        $stmt->execute([$transId, (int)$orderId]);
+
+    } catch (Exception $e) {
+        $response['message'] = $e->getMessage();
     }
-
-} catch (Exception $e) {
-    $message = $e->getMessage();
-    $resultCode = 1; // Đánh dấu lỗi nội bộ
+    echo json_encode($response);
 }
-
-// Phản hồi lại MoMo để xác nhận đã nhận IPN
-echo json_encode(['message' => $message, 'resultCode' => $resultCode]);
 ?>

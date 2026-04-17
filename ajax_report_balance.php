@@ -42,4 +42,3 @@ try {
 } catch (Exception $e) {
     echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
 }
-file_put_contents('log.txt', "Update booking $booking_id to balance_pending\n", FILE_APPEND);

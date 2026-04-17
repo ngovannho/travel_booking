@@ -38,25 +38,25 @@ $categories = $stmt->fetchAll();
     <div class="overflow-x-auto">
         <table class="w-full text-left border-collapse">
             <thead>
-                <tr class="bg-gray-50 text-gray-600 text-xs uppercase font-bold">
-                    <th class="px-6 py-4">ID</th>
-                    <th class="px-6 py-4">Tên danh mục</th>
-                    <th class="px-6 py-4">Slug</th>
-                    <th class="px-6 py-4 text-center">Thao tác</th>
+                <tr class="bg-gray-50 text-gray-600 text-[10px] uppercase font-bold tracking-widest">
+                    <th class="px-4 py-3">ID</th>
+                    <th class="px-4 py-3">Tên danh mục</th>
+                    <th class="px-4 py-3">Slug</th>
+                    <th class="px-4 py-3 text-center">Thao tác</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-gray-100">
                 <?php foreach($categories as $cat): ?>
                 <tr class="hover:bg-gray-50 transition">
-                    <td class="px-6 py-4 text-sm font-medium text-gray-900"><?= $cat['id'] ?></td>
-                    <td class="px-6 py-4 text-sm text-gray-700"><?= htmlspecialchars($cat['name']) ?></td>
-                    <td class="px-6 py-4 text-sm text-gray-500 font-mono"><?= $cat['slug'] ?></td>
-                    <td class="px-6 py-4">
+                    <td class="px-4 py-3 text-xs font-medium text-gray-900"><?= $cat['id'] ?></td>
+                    <td class="px-4 py-3 text-xs text-gray-700 font-bold uppercase tracking-tighter italic"><?= htmlspecialchars($cat['name']) ?></td>
+                    <td class="px-4 py-3 text-[10px] text-gray-400 font-mono"><?= $cat['slug'] ?></td>
+                    <td class="px-4 py-3">
                         <div class="flex justify-center space-x-2">
-                            <button onclick='openModal("edit", <?= json_encode($cat) ?>)' class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition">
+                            <button onclick='openModal("edit", <?= json_encode($cat) ?>)' class="p-1.5 text-blue-600 hover:bg-blue-50 rounded-md transition text-xs">
                                 <i class="fas fa-edit"></i>
                             </button>
-                            <button onclick="confirmDelete(<?= $cat['id'] ?>)" class="p-2 text-red-600 hover:bg-red-50 rounded-lg transition">
+                            <button onclick="confirmDelete(<?= $cat['id'] ?>)' class="p-1.5 text-red-600 hover:bg-red-50 rounded-md transition text-xs">
                                 <i class="fas fa-trash"></i>
                             </button>
                         </div>
@@ -67,16 +67,7 @@ $categories = $stmt->fetchAll();
         </table>
     </div>
 
-    <?php if($total_pages > 1): ?>
-    <div class="p-4 border-t border-gray-100 flex justify-center space-x-2">
-        <?php for($i = 1; $i <= $total_pages; $i++): ?>
-            <a href="?page=<?= $i ?>&search=<?= $search ?>" 
-               class="px-4 py-2 rounded-lg text-sm font-bold <?= $i == $page ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200' ?>">
-                <?= $i ?>
-            </a>
-        <?php endfor; ?>
-    </div>
-    <?php endif; ?>
+    <?= renderAdminPagination($page, $total_pages, $_GET) ?>
 </div>
 
 <div id="categoryModal" class="fixed inset-0 bg-black/50 z-[60] hidden flex items-center justify-center p-4">

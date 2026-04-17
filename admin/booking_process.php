@@ -1,5 +1,6 @@
 <?php
 require_once '../config.php';
+require_once '../mail_helper.php';
 session_start();
 
 if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'admin') {
@@ -13,6 +14,73 @@ if ($action === 'confirm') {
     $status = 'confirmed';
 } elseif ($action === 'cancel') {
     $status = 'cancelled';
+    // 1. Kiểm tra xem đơn hàng đã thanh toán 'completed' chưa để thực hiện hoàn tiền MoMo
+    $stmtCheck = $pdo->prepare("SELECT status, total_price, momo_trans_id, user_id FROM bookings WHERE id = ?");
+    $stmtCheck->execute([$id]);
+    $bookingRefund = $stmtCheck->fetch();
+
+    if ($bookingRefund && $bookingRefund['status'] === 'completed' && !empty($bookingRefund['momo_trans_id'])) {
+        // THỰC HIỆN GỌI API HOÀN TIỀN CỦA MOMO
+        $refundEndpoint = "https://test-payment.momo.vn/v2/gateway/api/refund";
+        $partnerCode = "MOMOBKUN20180529";
+        $accessKey   = "klm05TvNBzhg7h7j"; 
+        $secretKey   = "at67qH6mk8w5Y1nAyMoYKMWACiEi2bsa"; 
+
+        $refundOrderId = "refund_" . $id . "_" . time();
+        $refundRequestId = (string)time();
+        $refundAmount = (int)$bookingRefund['total_price'];
+        $description = "Hoàn tiền cho đơn hàng #" . $id . " do hệ thống hủy.";
+        $transId = $bookingRefund['momo_trans_id']; // Mã giao dịch gốc từ IPN lưu lại
+
+        $rawHashRefund = "accessKey=" . $accessKey .
+                         "&amount=" . $refundAmount .
+                         "&description=" . $description .
+                         "&orderId=" . $refundOrderId .
+                         "&partnerCode=" . $partnerCode .
+                         "&requestId=" . $refundRequestId .
+                         "&transId=" . $transId;
+
+        $refundSignature = hash_hmac("sha256", $rawHashRefund, $secretKey);
+
+        $refundData = array(
+            'partnerCode' => $partnerCode,
+            'requestId'   => $refundRequestId,
+            'amount'      => $refundAmount,
+            'orderId'     => $refundOrderId,
+            'transId'     => $transId,
+            'description' => $description,
+            'signature'   => $refundSignature,
+            'lang'        => 'vi'
+        );
+
+        $ch = curl_init($refundEndpoint);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($refundData));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/json'));
+        $refundResult = json_decode(curl_exec($ch), true);
+        curl_close($ch);
+
+        if (!isset($refundResult['resultCode']) || $refundResult['resultCode'] != 0) {
+            $_SESSION['error'] = "Lỗi hoàn tiền MoMo: " . ($refundResult['message'] ?? 'Không xác định');
+            header("Location: bookings.php");
+            exit;
+        }
+        
+        // Trừ lại điểm loyalty nếu đơn hàng bị hủy
+        $points_to_subtract = floor($bookingRefund['total_price'] / 100000);
+        $pdo->prepare("UPDATE users SET loyalty_points = GREATEST(0, loyalty_points - ?) WHERE id = ?")
+            ->execute([$points_to_subtract, $bookingRefund['user_id']]);
+        
+        // Cập nhật lại hạng thành viên
+        $pdo->prepare("UPDATE users u 
+                       SET rank_id = (SELECT id FROM ranks r WHERE u.loyalty_points >= r.min_points ORDER BY r.min_points DESC LIMIT 1)
+                       WHERE id = ?")
+            ->execute([$bookingRefund['user_id']]);
+
+        $status = 'refunded';
+    }
 }
 elseif ($action === 'complete') {
 
@@ -86,27 +154,31 @@ $booking = $info->fetch();
 if ($booking) {
     // Xác định nội dung thông báo theo yêu cầu người dùng
     $notif_msg = "Đơn hàng #$id đã được cập nhật trạng thái.";
-    if ($status === 'confirmed') $notif_msg = "Lily Travel đã xác nhận khoản cọc 30% của bạn cho đơn hàng #$id. Chỗ của bạn đã được giữ!";
-    if ($status === 'completed') $notif_msg = "Tuyệt vời! Chúng tôi đã xác nhận thanh toán 100% cho tour #$id. Chuẩn bị hành lý và lên đường thôi!";
+    if ($status === 'confirmed') $notif_msg = "Lily Travel đã xác nhận thanh toán của bạn cho đơn hàng #$id. Chỗ của bạn đã được giữ!";
+    if ($status === 'completed') $notif_msg = "Chuyến đi #$id của bạn đã hoàn tất! Hãy dành chút thời gian để lại đánh giá để giúp chúng tôi phục vụ tốt hơn nhé.";
     if ($status === 'cancelled') $notif_msg = "Rất tiếc, đơn hàng #$id của bạn đã bị hủy trên hệ thống.";
+    if ($status === 'refunded') $notif_msg = "Đơn hàng #$id của bạn đã được hủy và hoàn tiền thành công qua MoMo.";
 
     // Thêm thông báo cho người dùng (Sử dụng dữ liệu đã fetch để tối ưu hiệu năng)
     $pdo->prepare("INSERT INTO notifications (user_id, title, message, type, link) VALUES (?, ?, ?, ?, ?)")
         ->execute([$booking['user_id'], "Cập nhật đơn hàng #$id", $notif_msg, "payment", "profile.php?tab=tours"]);
 
     $status_names = [
-        'confirmed' => 'Xác nhận đã cọc (30%)',
+        'confirmed' => 'Đã thanh toán (100%)',
         'completed' => 'Đã thanh toán đủ (100%)',
-        'cancelled' => 'Đã hủy'
+        'cancelled' => 'Đã hủy',
+        'refunded' => 'Đã hoàn tiền'
     ];
     $current_status = $status_names[$status] ?? $status;
 
     $to = $booking['customer_email'];
-    $subject = "=?UTF-8?B?".base64_encode("Cập nhật trạng thái Tour: " . $booking['title'])."?=";
+    $subject = "Cập nhật trạng thái đơn hàng #" . $id . ": " . $booking['title'];
     
     // Xác định màu sắc chủ đạo dựa trên trạng thái
-    $header_color = $status === 'completed' ? '#10b981' : ($status === 'confirmed' ? '#2563eb' : '#64748b');
-    $status_title = $status === 'completed' ? 'THANH TOÁN THÀNH CÔNG' : ($status === 'confirmed' ? 'XÁC NHẬN ĐÃ NHẬN CỌC' : 'CẬP NHẬT ĐƠN HÀNG');
+    $header_color = $status === 'completed' ? '#10b981' : ($status === 'confirmed' ? '#2563eb' : ($status === 'refunded' ? '#ef4444' : '#64748b'));
+    $status_title = $status === 'completed' ? 'CHUYẾN ĐI HOÀN TẤT' : 
+                   ($status === 'confirmed' ? 'XÁC NHẬN THANH TOÁN' : 
+                   ($status === 'refunded' ? 'ĐÃ HOÀN TIỀN' : 'CẬP NHẬT ĐƠN HÀNG'));
 
     $message = "
         <html>
@@ -122,15 +194,28 @@ if ($booking) {
                         <div style='font-size: 12px; color: #64748b; margin-bottom: 5px;'>TRẠNG THÁI HIỆN TẠI</div>
                         <div style='color: $header_color; font-weight: 900; font-size: 22px; text-transform: uppercase; font-style: italic;'>$current_status</div>
                     </div>
+
+                    " . ($status === 'completed' ? "
+                    <div style='background: #fffbeb; border: 1px solid #fde68a; padding: 20px; border-radius: 15px; text-align: center; margin: 25px 0;'>
+                        <p style='color: #92400e; font-size: 14px; font-weight: 700; margin: 0;'>BẠN CÓ HÀI LÒNG VỚI CHUYẾN ĐI?</p>
+                        <p style='color: #b45309; font-size: 11px; margin-top: 5px;'>Đánh giá ngay để nhận thêm điểm tích lũy vào tài khoản nhé!</p>
+                    </div>
+                    " : "") . "
+
+                    <!-- QR Code Check-in -->
+                    <div style='text-align: center; margin: 25px 0;'>
+                        <p style='font-size: 10px; color: #94a3b8; text-transform: uppercase; margin-bottom: 10px;'>Mã QR Check-in</p>
+                        <img src='https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=$id' alt='QR Code Check-in' style='border: 4px solid #f1f5f9; border-radius: 15px;'>
+                    </div>
                     <div style='background: #fdfdfd; padding: 20px; border-radius: 12px; border: 1px solid #f1f5f9;'>
                         <table style='width: 100%; font-size: 14px;'>
                             <tr><td style='padding: 8px 0; color: #94a3b8;'>Chuyến đi:</td><td style='text-align: right; font-weight: 700;'>{$booking['title']}</td></tr>
-                            <tr><td style='padding: 8px 0; color: #94a3b8;'>Tổng cộng:</td><td style='text-align: right; font-weight: 700; color: #2563eb;'>" . number_format($booking['total_price'], 0, ',', '.') . "đ</td></tr>
+                            <tr><td style='padding: 8px 0; color: #94a3b8;'>" . ($status === 'refunded' ? 'Số tiền hoàn lại:' : 'Tổng cộng:') . "</td><td style='text-align: right; font-weight: 700; color: " . ($status === 'refunded' ? '#ef4444' : '#2563eb') . ";'>" . number_format($booking['total_price'], 0, ',', '.') . "đ</td></tr>
                         </table>
                     </div>
-                    <p style='margin-top: 30px; font-size: 13px; color: #64748b;'>Chúng tôi đang chuẩn bị những trải nghiệm tuyệt vời nhất cho bạn. Hẹn gặp lại sớm!</p>
+                    <p style='margin-top: 30px; font-size: 13px; color: #64748b;'>" . ($status === 'refunded' ? 'Số tiền đã được hoàn về nguồn thanh toán ban đầu (ví MoMo hoặc thẻ ngân hàng).' : ($status === 'completed' ? 'Cảm ơn bạn đã lựa chọn dịch vụ của Lily Travel. Hẹn gặp lại bạn trong những hành trình tiếp theo!' : 'Chúng tôi đang chuẩn bị những trải nghiệm tuyệt vời nhất cho bạn.')) . "</p>
                     <div style='text-align: center; margin-top: 40px;'>
-                        <a href='http://localhost/travel_booking/profile.php?tab=tours' style='background: #1e293b; color: #ffffff; padding: 15px 30px; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 12px;'>CHI TIẾT ĐƠN HÀNG</a>
+                        <a href='" . rtrim(BASE_URL, '/') . "/profile.php?tab=tours&booking_id=$id' style='background: #1e293b; color: #ffffff; padding: 15px 30px; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 12px;'>CHI TIẾT ĐƠN HÀNG</a>
                     </div>
                 </div>
                 <div style='background: #f8fafc; padding: 20px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #f1f5f9;'>
@@ -140,12 +225,7 @@ if ($booking) {
         </body>
         </html>
     ";
-
-    $headers = "MIME-Version: 1.0" . "\r\n";
-    $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
-    $headers .= "From: Lily Travel <noreply@lilytravel.com>" . "\r\n";
-
-    @mail($to, $subject, $message, $headers);
+    sendEmail($to, $booking['customer_name'], $subject, $message);
 }
 
 $_SESSION['success'] = "Cập nhật tour thành công!";

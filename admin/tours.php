@@ -18,6 +18,9 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute(["%$search%"]);
 $tours = $stmt->fetchAll();
 $categories = $pdo->query("SELECT * FROM categories")->fetchAll();
+
+// Lấy tất cả lịch khởi hành để truyền vào JS (nếu danh sách nhỏ) hoặc dùng AJAX
+// Ở đây ta sẽ dùng AJAX để tối ưu hiệu năng khi mở Modal Edit
 ?>
 
 <script src="https://cdn.ckeditor.com/4.22.1/standard/ckeditor.js"></script>
@@ -50,21 +53,24 @@ $categories = $pdo->query("SELECT * FROM categories")->fetchAll();
 <div class="grid grid-cols-1 lg:grid-cols-1 gap-4">
     <div class="block lg:hidden space-y-4">
         <?php foreach($tours as $t): ?>
-        <div class="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100">
+    <div class="bg-white p-4 rounded-[1.8rem] shadow-sm border border-slate-100">
             <div class="flex gap-4">
-                <img src="../assets/uploads/<?= $t['image'] ?: 'default.jpg' ?>" class="w-20 h-20 rounded-2xl object-cover border-4 border-slate-50">
+            <img src="../assets/uploads/<?= $t['image'] ?: 'default.jpg' ?>" class="w-16 h-16 rounded-xl object-cover border-2 border-slate-50">
                 <div class="flex-1 min-w-0">
-                    <span class="text-[9px] font-black text-blue-600 uppercase bg-blue-50 px-2 py-1 rounded-lg"><?= $t['cat_name'] ?></span>
-                    <div class="text-sm font-bold text-slate-900 truncate mt-1"><?= htmlspecialchars($t['title']) ?></div>
-                    <div class="text-base font-black text-blue-600 mt-1"><?= number_format($t['price_base'], 0, ',', '.') ?>đ</div>
+                <span class="text-[8px] font-black text-blue-600 uppercase bg-blue-50 px-1.5 py-0.5 rounded-md"><?= $t['cat_name'] ?></span>
+                <div class="text-xs font-bold text-slate-900 truncate mt-1"><?= htmlspecialchars($t['title']) ?></div>
+                <div class="flex items-center gap-2 mt-0.5">
+                    <div class="text-sm font-black text-blue-600"><?= number_format($t['price_base'], 0, ',', '.') ?>đ</div>
+                    <div class="text-[9px] text-slate-400 font-bold uppercase italic">Max: <?= $t['max_people'] ?> khách</div>
+                </div>
                 </div>
             </div>
-            <div class="flex items-center justify-between mt-5 pt-4 border-t border-dashed border-slate-100">
-                <div class="text-[10px] text-slate-400 font-black uppercase tracking-widest italic"><?= $t['duration'] ?></div>
+        <div class="flex items-center justify-between mt-4 pt-3 border-t border-dashed border-slate-100">
+                <div class="flex items-center gap-2"><?= getStatusToggle($t) ?></div>
                 <div class="flex space-x-2">
-                    <button onclick='openTourModal("edit", <?= json_encode($t) ?>)' class="w-10 h-10 flex items-center justify-center bg-slate-50 text-blue-600 rounded-xl"><i class="fas fa-edit"></i></button>
-                    <button onclick="confirmDelete(<?= $t['id'] ?>)" class="w-10 h-10 flex items-center justify-center bg-red-50 text-red-500 rounded-xl"><i class="fas fa-trash-alt"></i></button>
-                </div>
+                <button onclick='openTourModal("edit", <?= json_encode($t) ?>)' class="w-8 h-8 flex items-center justify-center bg-slate-50 text-blue-600 rounded-lg"><i class="fas fa-edit text-xs"></i></button>
+                <button onclick="confirmDelete(<?= $t['id'] ?>)" class="w-8 h-8 flex items-center justify-center bg-red-50 text-red-500 rounded-lg"><i class="fas fa-trash-alt text-xs"></i></button>
+                </div> 
             </div>
         </div>
         <?php endforeach; ?>
@@ -73,31 +79,42 @@ $categories = $pdo->query("SELECT * FROM categories")->fetchAll();
     <div class="hidden lg:block bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
         <table class="w-full text-left">
             <thead>
-                <tr class="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-black tracking-widest border-b border-slate-100">
-                    <th class="px-8 py-6">Ảnh</th>
-                    <th class="px-8 py-6">Chuyến đi</th>
-                    <th class="px-8 py-6 text-center">Giá niêm yết</th>
-                    <th class="px-8 py-6 text-center">Thao tác</th>
+            <tr class="bg-slate-50/50 text-slate-400 text-[9px] uppercase font-black tracking-widest border-b border-slate-100">
+                <th class="px-6 py-4">Ảnh</th>
+                <th class="px-6 py-4">Chuyến đi</th>
+                <th class="px-6 py-4 text-center">Giá niêm yết</th>
+                <th class="px-6 py-4 text-center">Trạng thái</th>
+                <th class="px-6 py-4 text-center">Thao tác</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
                 <?php foreach($tours as $t): ?>
                 <tr class="hover:bg-slate-50/50 transition-colors">
-                    <td class="px-8 py-6"><img src="../assets/uploads/<?= $t['image'] ?: 'default.jpg' ?>" class="w-16 h-12 rounded-xl object-cover shadow-sm"></td>
-                    <td class="px-8 py-6">
-                        <div class="text-sm font-bold text-slate-900 leading-tight"><?= htmlspecialchars($t['title']) ?></div>
+                <td class="px-6 py-4"><img src="../assets/uploads/<?= $t['image'] ?: 'default.jpg' ?>" class="w-12 h-9 rounded-lg object-cover shadow-sm"></td>
+                <td class="px-6 py-4">
+                    <div class="text-xs font-bold text-slate-900 leading-tight"><?= htmlspecialchars($t['title']) ?></div>
                         <div class="text-[9px] text-blue-500 font-black mt-1 uppercase tracking-tighter"><?= $t['cat_name'] ?> | <?= $t['duration'] ?></div>
-                        <div class="text-[9px] text-slate-400 mt-1 uppercase">Lịch: <?= htmlspecialchars($t['departure_dates'] ?? 'Chưa cập nhật') ?></div>
+                        <div class="flex flex-wrap gap-1.5 mt-2">
+                            <?php
+                            $sch_stmt = $pdo->prepare("SELECT departure_date, max_people, booked_seats FROM tour_schedules WHERE tour_id = ? AND is_available = 1 ORDER BY departure_date ASC LIMIT 3");
+                            $sch_stmt->execute([$t['id']]);
+                            $schedules = $sch_stmt->fetchAll();
+                            foreach($schedules as $s): ?>
+                                <span class="text-[8px] px-2 py-0.5 rounded-md font-bold <?= $s['booked_seats'] >= $s['max_people'] && $s['max_people'] > 0 ? 'bg-red-50 text-red-400 border border-red-100' : 'bg-slate-50 text-slate-500 border border-slate-100' ?>">
+                                    <?= date('d/m', strtotime($s['departure_date'])) ?> (<?= $s['booked_seats'] ?>/<?= $s['max_people'] ?>)</span>
+                            <?php endforeach; ?>
+                        </div>
                     </td>
-                    <td class="px-8 py-6 text-center">
-                        <div class="text-sm font-black text-blue-600"><?= number_format($t['price_base'], 0, ',', '.') ?>đ</div>
+                <td class="px-6 py-4 text-center">
+                    <div class="text-xs font-black text-blue-600"><?= number_format($t['price_base'], 0, ',', '.') ?>đ</div>
                         <div class="text-[9px] text-slate-400 font-bold">NCT: <?= number_format($t['price_infant'] ?? 0, 0, ',', '.') ?>đ | Trẻ: <?= number_format($t['price_child'] ?? 0, 0, ',', '.') ?>đ</div>
                         <?php if($t['discount_code']): ?><div class="text-[9px] text-emerald-500 font-black mt-1 uppercase">Code: <?= $t['discount_code'] ?> (-<?= $t['discount_percent'] ?>%)</div><?php endif; ?>
                     </td>
-                    <td class="px-8 py-6 text-center">
+                <td class="px-6 py-4 text-center"><?= getStatusToggle($t) ?></td>
+                <td class="px-6 py-4 text-center">
                         <div class="flex justify-center space-x-3">
-                            <button onclick='openTourModal("edit", <?= json_encode($t) ?>)' class="text-slate-400 hover:text-blue-600"><i class="fas fa-edit"></i></button>
-                            <button onclick="confirmDelete(<?= $t['id'] ?>)" class="text-slate-400 hover:text-red-500"><i class="fas fa-trash-alt"></i></button>
+                        <button onclick='openTourModal("edit", <?= json_encode($t) ?>)' class="text-slate-400 hover:text-blue-600 text-sm"><i class="fas fa-edit"></i></button>
+                        <button onclick="confirmDelete(<?= $t['id'] ?>)" class="text-slate-400 hover:text-red-500 text-sm"><i class="fas fa-trash-alt"></i></button>
                         </div>
                     </td>
                 </tr>
@@ -107,13 +124,16 @@ $categories = $pdo->query("SELECT * FROM categories")->fetchAll();
     </div>
 </div>
 
-<?php if($total_pages > 1): ?>
-<div class="mt-8 flex justify-center space-x-2">
-    <?php for($i = 1; $i <= $total_pages; $i++): ?>
-        <a href="?page=<?= $i ?>&search=<?= $search ?>" class="w-10 h-10 flex items-center justify-center rounded-xl text-xs font-black transition-all <?= $i == $page ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'bg-white text-slate-400 border border-slate-100' ?>"><?= $i ?></a>
-    <?php endfor; ?>
-</div>
-<?php endif; ?>
+<?php
+function getStatusToggle($t) {
+    $isActive = $t['status'] == 1;
+    $colorClass = $isActive ? 'text-emerald-500 bg-emerald-50' : 'text-slate-300 bg-slate-50';
+    $icon = $isActive ? 'fa-toggle-on' : 'fa-toggle-off';
+    return "<button onclick='toggleTourStatus({$t['id']}, " . ($isActive ? 0 : 1) . ")' class='flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-black text-[9px] uppercase transition-all $colorClass'><i class='fas $icon fa-lg'></i> " . ($isActive ? 'Đang hoạt động' : 'Tạm ẩn') . "</button>";
+}
+?>
+
+<?= renderAdminPagination($page, $total_pages, $_GET) ?>
 
 <div id="tourModal" class="fixed inset-0 bg-slate-900/60 z-[70] hidden flex items-center justify-center p-4 backdrop-blur-sm">
     <div class="bg-white rounded-[2rem] shadow-2xl transform transition-all scale-95 opacity-0 duration-300" id="modalContent">
@@ -163,8 +183,14 @@ $categories = $pdo->query("SELECT * FROM categories")->fetchAll();
 
                 <div class="grid grid-cols-2 gap-4">
                     <div class="space-y-1">
-                        <label class="text-[9px] font-black uppercase text-slate-400 ml-1">Ngày khởi hành (Cách nhau dấu phẩy)</label>
-                        <input type="text" name="departure_dates" id="t_dates" placeholder="15/10, 20/10, 25/10..." class="w-full p-3.5 bg-slate-50 border-0 rounded-xl outline-none text-xs font-bold">
+                        <label class="text-[9px] font-black uppercase text-slate-400 ml-1">Lịch khởi hành chi tiết</label>
+                        <div class="flex gap-2 mb-2">
+                            <input type="date" id="schedule_date_input" class="w-1/2 p-2 bg-slate-50 border-0 rounded-lg text-[10px] font-bold outline-none ring-1 ring-slate-100">
+                            <input type="number" id="schedule_seats_input" placeholder="Số chỗ" class="w-1/4 p-2 bg-slate-50 border-0 rounded-lg text-[10px] font-bold outline-none ring-1 ring-slate-100">
+                            <button type="button" onclick="addScheduleDate()" class="flex-1 bg-blue-600 text-white rounded-lg text-[10px] font-black uppercase hover:bg-slate-900 transition-colors">Thêm</button>
+                        </div>
+                        <div id="schedule_list" class="flex flex-wrap gap-2 p-3 bg-slate-50 rounded-xl border border-dashed border-slate-200 min-h-[60px]"></div>
+                        <input type="hidden" name="schedules" id="t_schedules_json">
                     </div>
                     <div class="space-y-1">
                         <label class="text-[9px] font-black uppercase text-slate-400 ml-1">Số chỗ tối đa</label>
@@ -256,6 +282,39 @@ $categories = $pdo->query("SELECT * FROM categories")->fetchAll();
     setupPriceFormat('t_price_child_display', 't_price_child');
     setupPriceFormat('t_price_infant_display', 't_price_infant');
 
+    let selectedDates = [];
+
+    function addScheduleDate() {
+        const input = document.getElementById('schedule_date_input');
+        const seatsInput = document.getElementById('schedule_seats_input');
+        if (!input.value) return;
+        if (selectedDates.find(i => i.date === input.value)) return Toast.fire({ icon: 'warning', title: 'Ngày này đã có trong danh sách' });
+
+        selectedDates.push({ date: input.value, max_people: parseInt(seatsInput.value) || 0 });
+        renderSchedules();
+        input.value = '';
+        seatsInput.value = '';
+    }
+
+    function removeDate(date) {
+        selectedDates = selectedDates.filter(d => d.date !== date);
+        renderSchedules();
+    }
+
+    function renderSchedules() {
+        const container = document.getElementById('schedule_list');
+        container.innerHTML = selectedDates.sort((a,b) => a.date.localeCompare(b.date)).map(item => `
+            <div class="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-100 shadow-sm animate-in fade-in zoom-in duration-200">
+                <div class="flex flex-col">
+                    <span class="text-[9px] font-black text-slate-700">${new Date(item.date).toLocaleDateString('vi-VN')}</span>
+                    <span class="text-[8px] font-bold text-blue-500 uppercase">${item.max_people} chỗ</span>
+                </div>
+                <button type="button" onclick="removeDate('${item.date}')" class="text-red-400 hover:text-red-600 ml-1"><i class="fas fa-times-circle text-[10px]"></i></button>
+            </div>
+        `).join('');
+        document.getElementById('t_schedules_json').value = JSON.stringify(selectedDates);
+    }
+
     const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
     <?php if(isset($_SESSION['success'])): ?>
         Toast.fire({ icon: 'success', title: '<?= $_SESSION['success'] ?>' });
@@ -280,7 +339,16 @@ $categories = $pdo->query("SELECT * FROM categories")->fetchAll();
             document.getElementById('t_price_infant').value = data.price_infant || '';
             document.getElementById('t_price_infant_display').value = data.price_infant ? parseInt(data.price_infant).toLocaleString('vi-VN') : '';
             
-            document.getElementById('t_dates').value = data.departure_dates || '';
+            // Lấy lịch khởi hành chi tiết qua AJAX
+            selectedDates = [];
+            renderSchedules();
+            fetch(`tour_process.php?action=get_schedules&tour_id=${data.id}`)
+                .then(res => res.json())
+                .then(dates => {
+                    selectedDates = dates;
+                    renderSchedules();
+                });
+
             document.getElementById('t_max').value = data.max_people || '';
             document.getElementById('t_duration').value = data.duration;
             document.getElementById('t_discount_code').value = data.discount_code || '';
@@ -298,6 +366,8 @@ $categories = $pdo->query("SELECT * FROM categories")->fetchAll();
             document.getElementById('t_price_infant_display').value = '';
             document.getElementById('t_discount_code').value = '';
             document.getElementById('t_discount_percent').value = 0;
+            selectedDates = [];
+            renderSchedules();
             CKEDITOR.instances.t_content.setData('');
         }
         modal.classList.remove('hidden');
@@ -324,6 +394,24 @@ $categories = $pdo->query("SELECT * FROM categories")->fetchAll();
             customClass: { popup: 'rounded-[2rem]' }
         }).then((result) => {
             if (result.isConfirmed) window.location.href = 'tour_process.php?action=delete&id=' + id;
+        });
+    }
+
+    function toggleTourStatus(id, newStatus) {
+        fetch(`tour_process.php?action=toggle_status&id=${id}&status=${newStatus}`)
+        .then(res => res.json())
+        .then(data => {
+            if(data.success) {
+                Toast.fire({
+                    icon: 'success',
+                    title: 'Đã cập nhật trạng thái hiển thị'
+                }).then(() => location.reload());
+            } else {
+                Swal.fire('Lỗi', data.message || 'Không thể cập nhật', 'error');
+            }
+        })
+        .catch(err => {
+            Swal.fire('Lỗi', 'Có lỗi kết nối hệ thống', 'error');
         });
     }
 </script>

@@ -3,21 +3,37 @@ require_once '../config.php';
 include 'header.php'; 
 
 $rating_filter = isset($_GET['rating']) ? (int)$_GET['rating'] : 0;
+$page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+$limit = 5; // Số lượng tour hiển thị trên mỗi trang
+$offset = ($page - 1) * $limit;
+
+// Đếm tổng số tour có đánh giá (áp dụng bộ lọc rating nếu có)
+$count_sql = "SELECT COUNT(DISTINCT t.id) 
+              FROM tours t 
+              WHERE EXISTS (SELECT 1 FROM reviews r WHERE r.tour_id = t.id " . ($rating_filter > 0 ? " AND r.rating = ?" : "") . ")";
+$count_stmt = $pdo->prepare($count_sql);
+$count_params = [];
+if ($rating_filter > 0) {
+    $count_params[] = $rating_filter;
+}
+$count_stmt->execute($count_params);
+$total_tours_with_reviews = $count_stmt->fetchColumn();
+$total_pages = ceil($total_tours_with_reviews / $limit);
 
 // Lấy danh sách tour và trung bình cộng đánh giá
 $sql = "SELECT t.id, t.title, t.image, 
                (SELECT AVG(rating) FROM reviews WHERE tour_id = t.id) as avg_rating, 
                (SELECT COUNT(id) FROM reviews WHERE tour_id = t.id) as total_reviews 
         FROM tours t 
-        WHERE EXISTS (SELECT 1 FROM reviews r WHERE r.tour_id = t.id " . ($rating_filter > 0 ? " AND r.rating = ?" : "") . ")
-        ORDER BY avg_rating DESC";
-
+        WHERE EXISTS (SELECT 1 FROM reviews r WHERE r.tour_id = t.id " . ($rating_filter > 0 ? " AND r.rating = ?" : "") . ") ORDER BY avg_rating DESC LIMIT ? OFFSET ?";
 $stmt = $pdo->prepare($sql);
+$params = [];
 if ($rating_filter > 0) {
-    $stmt->execute([$rating_filter]);
-} else {
-    $stmt->execute();
+    $params[] = $rating_filter;
 }
+$params[] = $limit;
+$params[] = $offset;
+$stmt->execute($params);
 $tour_summaries = $stmt->fetchAll();
 ?>
 
@@ -28,13 +44,13 @@ $tour_summaries = $stmt->fetchAll();
     </div>
 
     <!-- Bộ lọc số sao -->
-    <div class="flex gap-2 bg-white p-2 rounded-2xl shadow-sm border border-slate-50">
-        <a href="tour_reviews.php" class="px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all <?= $rating_filter == 0 ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50' ?>">
+    <div class="flex bg-slate-200/50 p-1 rounded-[1.2rem] border border-slate-200/60 shadow-inner backdrop-blur-sm">
+        <a href="tour_reviews.php" class="px-5 py-2.5 rounded-[1rem] text-[9px] font-black uppercase tracking-widest transition-all duration-500 <?= $rating_filter == 0 ? 'bg-white text-blue-600 shadow-md scale-100' : 'text-slate-500 hover:text-slate-800' ?>">
             <i class="fas fa-border-all mr-1"></i> Tất cả
         </a>
         <?php for($i=5; $i>=1; $i--): ?>
-            <a href="?rating=<?= $i ?>" class="px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all <?= $rating_filter == $i ? 'bg-amber-500 text-white shadow-lg shadow-amber-200' : 'text-slate-400 hover:bg-slate-50' ?>">
-                <?= $i ?> <i class="fas fa-star ml-0.5 text-[8px]"></i>
+            <a href="?rating=<?= $i ?>" class="px-5 py-2.5 rounded-[1rem] text-[9px] font-black uppercase tracking-widest transition-all duration-500 <?= $rating_filter == $i ? 'bg-white text-amber-500 shadow-md scale-100' : 'text-slate-500 hover:text-slate-800' ?>">
+                <?= $i ?> <i class="fas fa-star ml-1 text-[8px]"></i>
             </a>
         <?php endfor; ?>
     </div>
@@ -105,5 +121,7 @@ $tour_summaries = $stmt->fetchAll();
         <p class="text-xs font-black text-slate-400 uppercase tracking-widest italic">Chưa có đánh giá nào từ khách hàng</p>
     </div>
 <?php endif; ?>
+
+<?= renderAdminPagination($page, $total_pages, $_GET) ?>
 
 </main></div></div></body></html>

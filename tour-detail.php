@@ -13,6 +13,8 @@ $tour = $stmt->fetch();
 
 if (!$tour) { header("Location: index.php"); exit; }
 
+$current_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]$_SERVER[REQUEST_URI]";
+
 $user_booking = null;
 if (isset($_SESSION['user'])) {
     $stmt_check = $pdo->prepare("
@@ -33,9 +35,52 @@ if (isset($_SESSION['user'])) {
     $my_promos = $stmt_my_promos->fetchAll();
 }
 
+$is_wishlisted = false;
+if (isset($_SESSION['user'])) {
+    $stmt_wish = $pdo->prepare("SELECT 1 FROM wishlists WHERE user_id = ? AND tour_id = ?");
+    $stmt_wish->execute([$_SESSION['user']['id'], $id]);
+    $is_wishlisted = (bool)$stmt_wish->fetch();
+}
+?>
+
+<!-- Thêm Meta Tags SEO & Social Sharing -->
+<meta name="description" content="<?= htmlspecialchars($tour['description']) ?>">
+<meta property="og:title" content="<?= htmlspecialchars($tour['title']) ?> | Lily Travel">
+<meta property="og:description" content="<?= htmlspecialchars($tour['description']) ?>">
+<meta property="og:image" content="<?= (isset($_SERVER['HTTPS']) ? "https" : "http") . "://$_SERVER[HTTP_HOST]" ?>/travel_booking/assets/uploads/<?= $tour['image'] ?>">
+<meta property="og:url" content="<?= $current_url ?>">
+<meta property="og:type" content="website">
+
+<?php
 $stmt_reviews = $pdo->prepare("SELECT r.*, u.fullname FROM reviews r JOIN users u ON r.user_id = u.id WHERE r.tour_id = ? ORDER BY r.created_at DESC");
 $stmt_reviews->execute([$id]);
 $reviews = $stmt_reviews->fetchAll();
+
+// Tính toán số chỗ còn trống cho từng ngày khởi hành
+$dates_raw = explode(',', $tour['departure_dates'] ?? '');
+$availability_data = [];
+$max_capacity = ($tour['max_people'] > 0) ? (int)$tour['max_people'] : (int)$tour['max_participants'];
+
+foreach ($dates_raw as $date_item) {
+    $date_item = trim($date_item);
+    if (!$date_item) continue;
+    
+    $stmt_count = $pdo->prepare("SELECT SUM(num_adults + num_children + num_infants) FROM bookings WHERE tour_id = ? AND departure_date = ? AND status != 'cancelled'");
+    $stmt_count->execute([$id, $date_item]);
+    $booked_count = (int)$stmt_count->fetchColumn();
+    
+    $availability_data[$date_item] = max(0, $max_capacity - $booked_count);
+}
+
+// Lấy các tour liên quan (cùng danh mục, ngoại trừ tour hiện tại)
+$stmt_related = $pdo->prepare("
+    SELECT t.*, c.name as cat_name 
+    FROM tours t 
+    LEFT JOIN categories c ON t.category_id = c.id 
+    WHERE t.category_id = ? AND t.id != ? AND t.status = 1 
+    ORDER BY RAND() LIMIT 3");
+$stmt_related->execute([$tour['category_id'], $id]);
+$related_tours = $stmt_related->fetchAll();
 ?>
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -59,9 +104,15 @@ $reviews = $stmt_reviews->fetchAll();
                         <i class="fas fa-chevron-right mx-3 text-[8px] text-gray-300"></i>
                         <span class="text-gray-400 italic"><?= $tour['cat_name'] ?></span>
                     </nav>
-                    <h1 class="text-4xl md:text-6xl font-black-italic text-slate-900 leading-[1.1] uppercase tracking-tighter mb-6">
-                        <?= htmlspecialchars($tour['title']) ?>
-                    </h1>
+                    <div class="flex flex-col md:flex-row md:items-start justify-between gap-6">
+                        <h1 class="text-4xl md:text-6xl font-black-italic text-slate-900 leading-[1.1] uppercase tracking-tighter mb-6 flex-1">
+                            <?= htmlspecialchars($tour['title']) ?>
+                        </h1>
+                        <button onclick="toggleWishlist(<?= $id ?>)" id="wishlist-btn" 
+                                class="w-16 h-16 rounded-[2rem] flex items-center justify-center transition-all shadow-xl group <?= $is_wishlisted ? 'bg-red-50 text-red-500 border-2 border-red-100' : 'bg-white text-slate-300 border-2 border-slate-50 hover:text-red-400' ?>">
+                            <i class="fa<?= $is_wishlisted ? 's' : 'r' ?> fa-heart text-2xl group-active:scale-125 transition-transform"></i>
+                        </button>
+                    </div>
                 </div>
 
             <!-- Bọc ảnh trong container để làm hiệu ứng nhảy ảnh -->
@@ -98,6 +149,14 @@ $reviews = $stmt_reviews->fetchAll();
                             <p class="text-[9px] font-black text-orange-600 uppercase mb-1">Khởi hành</p>
                             <p class="text-sm font-bold text-slate-800"><?= $tour['departure_location'] ?></p>
                         </div>
+                        <!-- Weather Badge Overlay - MỚI -->
+                        <div id="weather-badge-overlay" class="bg-white/90 backdrop-blur-md px-6 py-3 rounded-2xl shadow-xl border border-white/50 hidden">
+                            <p class="text-[9px] font-black text-amber-500 uppercase mb-1">Thời tiết</p>
+                            <div class="flex items-center gap-2">
+                                <span id="overlay-weather-icon" class="text-amber-500 text-xs"></span>
+                                <p id="overlay-weather-temp" class="text-sm font-bold text-slate-800">--°C</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -109,6 +168,83 @@ $reviews = $stmt_reviews->fetchAll();
                     </h3>
                     <div class="tour-content-scroll prose prose-slate max-w-none text-slate-600 leading-relaxed font-medium text-lg relative z-10">
                         <?= $tour['content'] ?>
+                    </div>
+                </div>
+
+                <!-- Social Share Section - MỚI -->
+                <div class="mt-10 p-8 bg-slate-900 rounded-[3rem] text-white flex flex-col md:flex-row items-center justify-between gap-6 shadow-2xl">
+                    <div>
+                        <h4 class="text-xl font-black-italic tracking-tighter mb-1 uppercase">Chia sẻ hành trình</h4>
+                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Gợi ý chuyến đi này cho bạn bè và người thân</p>
+                    </div>
+                    <div class="flex gap-4">
+                        <a href="https://www.facebook.com/sharer/sharer.php?u=<?= urlencode($current_url) ?>" target="_blank" class="w-12 h-12 bg-white/10 hover:bg-blue-600 rounded-2xl flex items-center justify-center transition-all shadow-lg group" title="Chia sẻ Facebook">
+                            <i class="fab fa-facebook-f group-hover:scale-110 transition-transform"></i>
+                        </a>
+                        <a href="https://sp.zalo.me/share/base?url=<?= urlencode($current_url) ?>" target="_blank" class="w-12 h-12 bg-white/10 hover:bg-blue-500 rounded-2xl flex items-center justify-center transition-all shadow-lg group" title="Chia sẻ Zalo">
+                            <span class="font-black text-[9px] group-hover:scale-110 transition-transform">ZALO</span>
+                        </a>
+                        <button onclick="copyTourUrl()" class="w-12 h-12 bg-white/10 hover:bg-emerald-500 rounded-2xl flex items-center justify-center transition-all shadow-lg group" title="Sao chép liên kết">
+                            <i class="fas fa-link group-hover:scale-110 transition-transform"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Google Maps Section - MỚI -->
+                <div class="mt-10 bg-white p-10 md:p-14 rounded-[3.5rem] shadow-xl shadow-slate-200/40 border border-slate-50 overflow-hidden relative">
+                    <div class="absolute top-0 right-0 w-32 h-32 bg-blue-50/50 rounded-full -mr-16 -mt-16"></div>
+                    <h3 class="text-2xl font-black-italic uppercase text-slate-800 mb-8 flex items-center relative z-10">
+                        <span class="w-12 h-2 bg-blue-600 rounded-full mr-5 shadow-lg shadow-blue-200"></span> 
+                        Vị trí khởi hành
+                    </h3>
+                    
+                    <div class="rounded-[2.5rem] overflow-hidden h-80 shadow-inner border border-slate-100 relative group z-10">
+                        <iframe 
+                            class="w-full h-full grayscale group-hover:grayscale-0 transition-all duration-700"
+                            frameborder="0" 
+                            scrolling="no" 
+                            marginheight="0" 
+                            marginwidth="0" 
+                            src="https://maps.google.com/maps?q=<?= urlencode($tour['departure_location']) ?>&t=&z=15&ie=UTF8&iwloc=&output=embed">
+                        </iframe>
+                    </div>
+                    <p class="mt-6 text-[10px] font-black text-slate-400 uppercase italic tracking-widest text-center">
+                        <i class="fas fa-map-marker-alt mr-2 text-blue-600"></i> Điểm đón: <?= htmlspecialchars($tour['departure_location']) ?>
+                    </p>
+                </div>
+
+                <!-- Weather Forecast Section - MỚI -->
+                <div id="weather-section" class="mt-10 bg-white p-10 md:p-14 rounded-[3.5rem] shadow-xl shadow-slate-200/40 border border-slate-50 relative overflow-hidden hidden">
+                    <div class="absolute top-0 right-0 w-32 h-32 bg-amber-50/50 rounded-full -mr-16 -mt-16"></div>
+                    <h3 class="text-2xl font-black-italic uppercase text-slate-800 mb-8 flex items-center relative z-10">
+                        <span class="w-12 h-2 bg-amber-400 rounded-full mr-5 shadow-lg shadow-amber-100"></span> 
+                        Thời tiết tại điểm khởi hành
+                    </h3>
+                    
+                    <div class="flex flex-col md:flex-row items-center justify-between gap-8 relative z-10">
+                        <div class="flex items-center gap-8">
+                            <div id="weather-icon" class="text-7xl text-amber-400">
+                                <i class="fas fa-sun"></i>
+                            </div>
+                            <div>
+                                <p id="weather-temp" class="text-5xl font-black text-slate-800 leading-none tracking-tighter mb-2">--°C</p>
+                                <div class="flex gap-4 mb-3">
+                                    <span class="text-[9px] font-black text-red-500 uppercase bg-red-50 px-2 py-0.5 rounded-lg border border-red-100 flex items-center"><i class="fas fa-arrow-up mr-1 text-[7px]"></i> Cao: <span id="weather-max" class="ml-1">--</span>°C</span>
+                                    <span class="text-[9px] font-black text-blue-500 uppercase bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-100 flex items-center"><i class="fas fa-arrow-down mr-1 text-[7px]"></i> Thấp: <span id="weather-min" class="ml-1">--</span>°C</span>
+                                </div>
+                                <div class="flex gap-3 mb-3">
+                                    <span class="text-[9px] font-black text-slate-500 uppercase bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-100 flex items-center"><i class="fas fa-tint mr-1 text-[7px] text-blue-400"></i> Độ ẩm: <span id="weather-humidity" class="ml-1">--</span>%</span>
+                                    <span class="text-[9px] font-black text-slate-500 uppercase bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-100 flex items-center"><i class="fas fa-wind mr-1 text-[7px] text-teal-400"></i> Gió: <span id="weather-wind" class="ml-1">--</span>km/h</span>
+                                </div>
+                                <p id="weather-desc" class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] italic">Đang tải...</p>
+                            </div>
+                        </div>
+                        <div class="flex-1 max-w-sm text-center md:text-right">
+                            <p class="text-xs font-bold text-slate-500 italic leading-relaxed">
+                                <i class="fas fa-info-circle mr-2 text-blue-500"></i>
+                                Dự báo thời tiết tại <span class="text-slate-800 font-black"><?= htmlspecialchars($tour['departure_location']) ?></span> giúp bạn có sự chuẩn bị tốt nhất về trang phục và sức khỏe cho hành trình.
+                            </p>
+                        </div>
                     </div>
                 </div>
 
@@ -147,6 +283,46 @@ $reviews = $stmt_reviews->fetchAll();
                         <?php endforeach; ?>
                     </div>
                 </div>
+
+                <!-- Phần Tour liên quan -->
+                <?php if (!empty($related_tours)): ?>
+                <div class="mt-16">
+                    <div class="flex items-center gap-4 mb-10">
+                        <div class="h-px flex-1 bg-slate-200"></div>
+                        <h3 class="text-lg font-black text-slate-400 uppercase italic tracking-widest leading-none">Tour liên quan</h3>
+                        <div class="h-px flex-1 bg-slate-200"></div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <?php foreach($related_tours as $rt): ?>
+                        <a href="tour-detail.php?id=<?= $rt['id'] ?>" class="bg-white p-4 rounded-[2.5rem] border border-slate-50 hover:shadow-xl transition-all group flex flex-col">
+                            <div class="relative h-40 rounded-[2rem] overflow-hidden mb-4">
+                                <img src="assets/uploads/<?= $rt['image'] ?: 'default-tour.jpg' ?>" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700">
+                                <div class="absolute top-3 left-3 bg-white/90 backdrop-blur px-3 py-1 rounded-lg text-[8px] font-black text-blue-600 uppercase tracking-widest shadow-sm">
+                                    <?= $rt['cat_name'] ?>
+                                </div>
+                            </div>
+                            <div class="px-2 flex-1">
+                                <h4 class="text-xs font-black text-slate-800 uppercase italic leading-tight mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors">
+                                    <?= htmlspecialchars($rt['title']) ?>
+                                </h4>
+                                
+                                <div class="flex items-center justify-between mt-auto pt-3 border-t border-slate-50">
+                                    <div>
+                                        <p class="text-[8px] font-bold text-slate-400 uppercase italic leading-none mb-1">Giá từ</p>
+                                        <p class="text-xs font-black text-blue-600 tracking-tighter"><?= number_format($rt['price_base'], 0, ',', '.') ?>đ</p>
+                                    </div>
+                                    <div class="text-right">
+                                        <p class="text-[8px] font-bold text-slate-400 uppercase italic leading-none mb-1">Khởi hành</p>
+                                        <p class="text-[9px] font-black text-slate-700 uppercase tracking-tighter italic leading-none truncate max-w-[80px]"><?= $rt['departure_location'] ?></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </a>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+                <?php endif; ?>
             </div>
 
             <div class="lg:col-span-4">
@@ -174,14 +350,6 @@ $reviews = $stmt_reviews->fetchAll();
                                     <p class="text-xs font-black text-blue-800 uppercase italic leading-tight">Đơn hàng đang chờ xử lý<br><span class="text-[10px] opacity-60">Vui lòng hoàn tất thanh toán qua MoMo.</span></p>
                                 </div>
                             <?php else: ?>
-                                <!-- CHỈ MỞ LẠI form đặt tour khi không có đơn hàng HOẶC đơn hàng gần nhất đã hoàn thành -->
-                                <?php if ($user_booking && trim($user_booking['status']) == 'completed'): ?>
-                                    <div class="mb-6 p-5 bg-emerald-50 rounded-3xl border border-emerald-100 flex items-center gap-3">
-                                        <i class="fas fa-check-circle text-emerald-500"></i>
-                                        <p class="text-[10px] font-black text-emerald-800 uppercase italic">Thanh toán hoàn tất! Bạn có thể đặt thêm tour mới.</p>
-                                    </div>
-                                <?php endif; ?>
-
                                 <form id="bookingForm" action="booking_process.php" method="POST" class="space-y-5">
                                     <input type="hidden" name="tour_id" value="<?= $tour['id'] ?>">
                                     <input type="hidden" name="total_price" id="final_price_input" value="0">
@@ -189,14 +357,18 @@ $reviews = $stmt_reviews->fetchAll();
                                     <div class="space-y-3">
                                         <div class="space-y-1">
                                             <label class="text-[9px] font-black uppercase text-slate-400 ml-1">Ngày khởi hành</label>
-                                            <select name="departure_date" required class="w-full p-4 bg-slate-50 border-0 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500">
-                                                <?php 
-                                                $dates = explode(',', $tour['departure_dates'] ?? '');
-                                                foreach($dates as $date): $date = trim($date); if(!$date) continue;
-                                                ?>
-                                                    <option value="<?= htmlspecialchars($date) ?>"><?= htmlspecialchars($date) ?></option>
-                                                <?php endforeach; ?>
-                                            </select>
+                                        <select name="departure_date" id="departure_date" onchange="updateAvailabilityInfo()" required class="w-full p-4 bg-slate-50 border-0 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500">
+                                            <?php foreach($availability_data as $date => $slots): ?>
+                                                <option value="<?= htmlspecialchars($date) ?>" data-slots="<?= $slots ?>">
+                                                    <?= htmlspecialchars($date) ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                        <div id="availability-badge" class="mt-2 hidden">
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-emerald-50 text-emerald-600 border border-emerald-100">
+                                                <i class="fas fa-users mr-1.5"></i> Còn trống: <span id="remaining-slots" class="ml-1">0</span> chỗ
+                                            </span>
+                                        </div>
                                         </div>
 
                                         <div class="grid grid-cols-3 gap-2">
@@ -219,6 +391,37 @@ $reviews = $stmt_reviews->fetchAll();
                                     </div>
 
                                     <div class="space-y-1">
+                                        <label class="text-[9px] font-black uppercase text-slate-400 ml-1">Hình thức thanh toán</label>
+                                        <div class="grid grid-cols-2 gap-3">
+                                            <label class="relative flex flex-col p-4 bg-slate-50 rounded-2xl border-2 border-transparent cursor-pointer hover:bg-white hover:border-blue-500 transition-all group has-[:checked]:border-blue-600 has-[:checked]:bg-white" onclick="toggleBankInfo(false)">
+                                                <input type="radio" name="payment_method" value="momo" checked class="hidden" onchange="toggleBankInfo(false)">
+                                                <i class="fas fa-wallet text-xl text-slate-300 group-hover:text-blue-500 mb-2 transition-colors group-has-[:checked]:text-blue-600"></i>
+                                                <span class="text-[10px] font-black uppercase tracking-tighter text-slate-500 group-has-[:checked]:text-slate-900">Ví MoMo</span>
+                                            </label>
+                                            <label class="relative flex flex-col p-4 bg-slate-50 rounded-2xl border-2 border-transparent cursor-pointer hover:bg-white hover:border-blue-500 transition-all group has-[:checked]:border-blue-600 has-[:checked]:bg-white" onclick="toggleBankInfo(true)">
+                                                <input type="radio" name="payment_method" value="bank" class="hidden" onchange="toggleBankInfo(true)">
+                                                <i class="fas fa-university text-xl text-slate-300 group-hover:text-blue-500 mb-2 transition-colors group-has-[:checked]:text-blue-600"></i>
+                                                <span class="text-[10px] font-black uppercase tracking-tighter text-slate-500 group-has-[:checked]:text-slate-900">Chuyển khoản</span>
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <!-- Khối thông tin ngân hàng hiện ra khi chọn Chuyển khoản -->
+                                    <div id="bank-info-display" class="hidden mt-4 p-5 bg-blue-50 rounded-2xl border border-blue-100 animate-in fade-in slide-in-from-top-2 duration-300 shadow-inner">
+                                        <h5 class="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-3 flex items-center"><i class="fas fa-university mr-2"></i> Tài khoản thanh toán</h5>
+                                        <div class="flex items-center gap-4">
+                                            <div class="flex-1 space-y-1 text-[10px] font-bold text-slate-600">
+                                                <p>Ngân hàng: <span class="text-slate-900 uppercase">MB BANK</span></p>
+                                                <p>Số tài khoản: <span class="text-blue-600 font-black">0777454550</span></p>
+                                                <p>Chủ tài khoản: <span class="text-slate-900 uppercase">NGO VAN NHO</span></p>
+                                            </div>
+                                            <div class="w-20 h-20 bg-white p-1 rounded-xl shadow-sm border border-blue-100">
+                                                <img src="https://img.vietqr.io/image/MB-0777454550-compact2.png?accountName=NGO VAN NHO" alt="QR Preview" class="w-full h-full object-contain">
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="space-y-1">
                                         <label class="text-[9px] font-black uppercase text-slate-400 ml-1 italic">Chọn mã ưu đãi của bạn</label>
                                         <select name="promo_code" id="promo_code" onchange="updateTotalPrice()" class="w-full p-4 bg-slate-50 border-0 rounded-2xl text-xs font-black outline-none focus:ring-2 focus:ring-emerald-500 transition-all text-center uppercase appearance-none">
                                             <option value="">-- Không sử dụng mã --</option>
@@ -232,7 +435,7 @@ $reviews = $stmt_reviews->fetchAll();
                                     </div>
 
                                     <div class="pt-4 border-t border-dashed border-slate-200 mt-4">
-                                        <button type="button" onclick="handleBooking()" class="w-full bg-slate-900 text-white py-5 rounded-[1.8rem] font-black uppercase text-[11px] tracking-[0.2em] shadow-2xl shadow-slate-300 hover:bg-blue-600 transition-all active:scale-95 flex items-center justify-center">
+                                        <button type="button" id="submit-booking-btn" onclick="handleBooking()" class="w-full bg-slate-900 text-white py-5 rounded-[1.8rem] font-black uppercase text-[11px] tracking-[0.2em] shadow-2xl shadow-slate-300 hover:bg-blue-600 transition-all active:scale-95 flex items-center justify-center">
                                             ĐẶT TOUR NGAY <i class="fas fa-chevron-right ml-3 text-[8px]"></i>
                                         </button>
                                     </div>
@@ -296,6 +499,55 @@ $reviews = $stmt_reviews->fetchAll();
         document.getElementById('final_price_input').value = total;
     }
 
+    function updateAvailabilityInfo() {
+        const select = document.getElementById('departure_date');
+        const badge = document.getElementById('availability-badge');
+        const bookingBtn = document.getElementById('submit-booking-btn');
+        
+        if (!select) return;
+        
+        const selectedOption = select.options[select.selectedIndex];
+        if (!selectedOption) return;
+
+        const slots = parseInt(selectedOption.dataset.slots) || 0;
+        badge.classList.remove('hidden');
+        const badgeInner = badge.querySelector('span');
+
+        if (slots <= 0) {
+            // Trường hợp hết chỗ
+            badgeInner.className = "inline-flex items-center px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-red-50 text-red-600 border border-red-100";
+            badgeInner.innerHTML = '<i class="fas fa-exclamation-circle mr-1.5"></i> Ngày này đã hết chỗ';
+            
+            if (bookingBtn) {
+                bookingBtn.disabled = true;
+                bookingBtn.innerHTML = 'HẾT CHỖ';
+                bookingBtn.classList.remove('bg-slate-900', 'hover:bg-blue-600');
+                bookingBtn.classList.add('bg-slate-300', 'text-slate-500', 'cursor-not-allowed');
+            }
+        } else {
+            // Trường hợp còn chỗ
+            badgeInner.className = "inline-flex items-center px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-emerald-50 text-emerald-600 border border-emerald-100";
+            badgeInner.innerHTML = `<i class="fas fa-users mr-1.5"></i> Còn trống: <span id="remaining-slots" class="ml-1">${slots}</span> chỗ`;
+            
+            if (bookingBtn) {
+                bookingBtn.disabled = false;
+                bookingBtn.innerHTML = 'ĐẶT TOUR NGAY <i class="fas fa-chevron-right ml-3 text-[8px]"></i>';
+                bookingBtn.classList.add('bg-slate-900', 'hover:bg-blue-600');
+                bookingBtn.classList.remove('bg-slate-300', 'text-slate-500', 'cursor-not-allowed');
+            }
+        }
+        
+        // Cập nhật giới hạn tối đa (max) cho các ô nhập số lượng
+        ['n_adults', 'n_infants', 'n_children'].forEach(id => {
+            const input = document.getElementById(id);
+            if (input) {
+                input.max = slots;
+                if (slots <= 0) input.value = 0;
+            }
+        });
+        updateTotalPrice();
+    }
+
     // Hiển thị thông báo nếu có tham số booking_success trên URL
     <?php if(isset($_GET['booking_success'])): ?>
     Swal.fire({
@@ -313,13 +565,29 @@ $reviews = $stmt_reviews->fetchAll();
             Swal.fire({ icon: 'error', title: 'Lỗi đặt tour', text: 'Vui lòng chọn số lượng người.' });
             return;
         }
+
+        const paymentMethod = document.querySelector('input[name="payment_method"]:checked').value;
+        let title = 'Xác nhận đặt tour';
+        let text = 'Hệ thống sẽ tạo yêu cầu đặt tour và hướng dẫn bạn thanh toán.';
+        let confirmButtonText = 'TIẾP TỤC';
+
+        if (paymentMethod === 'momo') {
+            title = 'Chuyển sang thanh toán MoMo';
+            text = 'Bạn sẽ được chuyển hướng tới cổng thanh toán an toàn của MoMo.';
+            confirmButtonText = 'THANH TOÁN NGAY';
+        } else if (paymentMethod === 'bank') {
+            title = 'Thanh toán Chuyển khoản';
+            text = 'Hệ thống sẽ hiển thị mã QR và thông tin tài khoản để bạn thực hiện chuyển khoản.';
+            confirmButtonText = 'TIẾP TỤC QUÉT MÃ';
+        }
+
         Swal.fire({
-            title: 'Chuyển sang thanh toán MoMo',
-            text: 'Bạn sẽ được chuyển hướng tới cổng thanh toán an toàn của MoMo.',
+            title: title,
+            text: text,
             icon: 'info',
             showCancelButton: true,
-            confirmButtonText: 'THANH TOÁN NGAY',
-            confirmButtonColor: '#a50064'
+            confirmButtonText: confirmButtonText,
+            confirmButtonColor: paymentMethod === 'momo' ? '#a50064' : '#0f172a'
         }).then((result) => {
             if (result.isConfirmed) document.getElementById('bookingForm').submit();
         });
@@ -372,8 +640,88 @@ $reviews = $stmt_reviews->fetchAll();
         changeSlide(slider, step);
     }
 
+    function toggleWishlist(tourId) {
+        const btn = document.getElementById('wishlist-btn');
+        const icon = btn.querySelector('i');
+        const formData = new FormData();
+        formData.append('tour_id', tourId);
+
+        fetch('ajax_wishlist.php', { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                if (data.action === 'added') {
+                    btn.className = 'w-16 h-16 rounded-[2rem] flex items-center justify-center transition-all shadow-xl group bg-red-50 text-red-500 border-2 border-red-100';
+                    icon.className = 'fas fa-heart text-2xl group-active:scale-125 transition-transform';
+                } else {
+                    btn.className = 'w-16 h-16 rounded-[2rem] flex items-center justify-center transition-all shadow-xl group bg-white text-slate-300 border-2 border-slate-50 hover:text-red-400';
+                    icon.className = 'far fa-heart text-2xl group-active:scale-125 transition-transform';
+                }
+            }
+        });
+    }
+
+    function copyTourUrl() {
+        navigator.clipboard.writeText(window.location.href).then(() => {
+            Swal.fire({
+                toast: true, position: 'top-end', icon: 'success',
+                title: '<span class="text-[10px] font-black uppercase italic">Đã sao chép liên kết tour!</span>',
+                showConfirmButton: false, timer: 2000, timerProgressBar: true,
+                customClass: { popup: 'rounded-2xl border border-slate-100 shadow-xl' }
+            });
+        });
+    }
+
+    async function loadWeather(location) {
+        const weatherSection = document.getElementById('weather-section');
+        if (!weatherSection) return;
+        try {
+            // 1. Lấy tọa độ từ tên địa điểm
+            const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1&language=vi&format=json`);
+            const geoData = await geoRes.json();
+            if (!geoData.results || geoData.results.length === 0) return;
+            const { latitude, longitude } = geoData.results[0];
+
+            // 2. Lấy dữ liệu thời tiết thực tế
+            const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&daily=temperature_2m_max,temperature_2m_min&timezone=auto`);
+            const weatherData = await weatherRes.json();
+            const current = weatherData.current;
+            
+            const weatherMap = {
+                0: { icon: 'fa-sun', desc: 'Trời quang đãng' },
+                1: { icon: 'fa-cloud-sun', desc: 'Ít mây, có nắng' },
+                2: { icon: 'fa-cloud-sun', desc: 'Nhiều mây, hửng nắng' },
+                3: { icon: 'fa-cloud', desc: 'Trời nhiều mây' },
+                45: { icon: 'fa-smog', desc: 'Có sương mù' },
+                61: { icon: 'fa-cloud-showers-heavy', desc: 'Có mưa vừa' },
+                95: { icon: 'fa-bolt', desc: 'Có dông' }
+            };
+            const info = weatherMap[current.weather_code] || { icon: 'fa-cloud-sun', desc: 'Thời tiết ổn định' };
+
+            // 3. Hiển thị lên giao diện
+            document.getElementById('weather-temp').innerText = `${Math.round(current.temperature_2m)}°C`;
+            document.getElementById('weather-max').innerText = Math.round(weatherData.daily.temperature_2m_max[0]);
+            document.getElementById('weather-min').innerText = Math.round(weatherData.daily.temperature_2m_min[0]);
+            document.getElementById('weather-humidity').innerText = current.relative_humidity_2m;
+            document.getElementById('weather-wind').innerText = current.wind_speed_10m;
+            document.getElementById('weather-desc').innerText = info.desc;
+            document.getElementById('weather-icon').innerHTML = `<i class="fas ${info.icon}"></i>`;
+            weatherSection.classList.remove('hidden');
+
+            // 4. Cập nhật thông tin lên Badge trên khung ảnh
+            document.getElementById('overlay-weather-temp').innerText = `${Math.round(current.temperature_2m)}°C`;
+            document.getElementById('overlay-weather-icon').innerHTML = `<i class="fas ${info.icon}"></i>`;
+            document.getElementById('weather-badge-overlay').classList.remove('hidden');
+
+        } catch (e) { console.error("Weather Error:", e); }
+    }
+
     // Chạy khi DOM sẵn sàng
-    document.addEventListener('DOMContentLoaded', initSliders);
+    document.addEventListener('DOMContentLoaded', () => {
+        initSliders();
+        updateAvailabilityInfo();
+        loadWeather(<?= json_encode($tour['departure_location']) ?>);
+    });
 </script>
 
 <?php include 'footer.php'; ?>

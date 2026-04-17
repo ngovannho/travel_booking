@@ -20,7 +20,6 @@ $news = $stmt->fetchAll();
 ?>
 
 <script src="https://cdn.ckeditor.com/4.22.1/standard/ckeditor.js"></script>
-
 <style>
     .cke_notification { display: none !important; }
     .cke_chrome { border-radius: 1rem !important; border: 1px solid #f1f5f9 !important; }
@@ -33,43 +32,78 @@ $news = $stmt->fetchAll();
         <h3 class="text-2xl font-black text-slate-800 uppercase tracking-tight text-center sm:text-left">Tin tức du lịch</h3>
         <p class="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mt-1 text-center sm:text-left">Cập nhật cẩm nang & sự kiện</p>
     </div>
-    <button onclick="openNewsModal('add')" class="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black text-xs shadow-xl shadow-blue-100 hover:bg-slate-900 transition-all duration-300">
+    <button onclick="openNewsModal('add')" class="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-slate-200 hover:bg-blue-600 transition-all duration-300">
         <i class="fas fa-edit mr-2"></i> THÊM BÀI VIẾT
     </button>
 </div>
 
-<div class="mb-8">
-    <form method="GET" class="relative w-full">
+<div class="mb-10">
+    <form method="GET" class="relative flex-1">
         <input type="text" name="search" value="<?= htmlspecialchars($search) ?>" placeholder="Tìm tên bài viết..." 
                class="w-full pl-14 pr-4 py-4 bg-white border-0 shadow-sm rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold">
-        <span class="absolute left-5 top-4 text-slate-300"><i class="fas fa-search fa-lg"></i></span>
+        <span class="absolute left-5 top-4 text-slate-200"><i class="fas fa-search fa-lg"></i></span>
     </form>
 </div>
 
-<div class="space-y-4">
+<div class="block lg:hidden space-y-4">
     <?php foreach($news as $n): ?>
-    <div class="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col md:flex-row items-center gap-5">
-        <img src="../assets/uploads/<?= $n['image'] ?: 'default-news.jpg' ?>" class="w-full md:w-32 h-32 rounded-3xl object-cover border-4 border-slate-50 shadow-sm">
-        <div class="flex-1 min-w-0 text-center md:text-left">
-            <div class="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-1"><?= date('d/m/Y', strtotime($n['created_at'])) ?></div>
-            <h4 class="text-base font-bold text-slate-900 leading-tight mb-2 truncate"><?= htmlspecialchars($n['title']) ?></h4>
-            <p class="text-xs text-slate-400 line-clamp-2"><?= htmlspecialchars($n['summary']) ?></p>
+    <div class="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
+        <div class="flex gap-4 mb-4">
+            <img src="../assets/uploads/<?= $n['image'] ?: 'default-news.jpg' ?>" class="w-20 h-20 rounded-2xl object-cover border border-slate-50">
+            <div class="flex-1 min-w-0">
+                <div class="text-[9px] font-black text-blue-500 uppercase tracking-widest mb-1"><?= date('d/m/Y', strtotime($n['created_at'])) ?></div>
+                <h4 class="text-sm font-bold text-slate-900 leading-tight truncate uppercase tracking-tighter"><?= htmlspecialchars($n['title']) ?></h4>
+                <p class="text-[10px] text-slate-400 line-clamp-2 mt-1 italic"><?= htmlspecialchars($n['summary']) ?></p>
+            </div>
         </div>
-        <div class="flex md:flex-col gap-2 w-full md:w-auto">
-            <button onclick='openNewsModal("edit", <?= json_encode($n) ?>)' class="flex-1 w-12 h-12 flex items-center justify-center bg-slate-50 text-blue-600 rounded-2xl hover:bg-blue-600 hover:text-white transition-all"><i class="fas fa-pen"></i></button>
-            <button onclick="confirmDelete(<?= $n['id'] ?>)" class="flex-1 w-12 h-12 flex items-center justify-center bg-red-50 text-red-500 rounded-2xl hover:bg-red-500 hover:text-white transition-all"><i class="fas fa-trash-alt"></i></button>
+        <div class="flex gap-2 pt-4 border-t border-dashed border-slate-100">
+            <button onclick='openNewsModal("edit", <?= json_encode($n) ?>)' class="flex-1 py-3 bg-slate-50 text-blue-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all">Sửa</button>
+            <button onclick="confirmDelete(<?= $n['id'] ?>)" class="flex-1 py-3 bg-red-50 text-red-500 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all">Xóa</button>
+            <a href="../news-detail.php?id=<?= $n['id'] ?>" target="_blank" class="w-12 h-12 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-600 hover:text-white transition-all"><i class="fas fa-eye"></i></a>
         </div>
     </div>
     <?php endforeach; ?>
 </div>
 
-<?php if($total_pages > 1): ?>
-<div class="mt-8 flex justify-center space-x-2">
-    <?php for($i = 1; $i <= $total_pages; $i++): ?>
-        <a href="?page=<?= $i ?>&search=<?= $search ?>" class="w-10 h-10 flex items-center justify-center rounded-xl text-xs font-black transition-all <?= $i == $page ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'bg-white text-slate-400 border border-slate-100' ?>"><?= $i ?></a>
-    <?php endfor; ?>
+<div class="hidden lg:block bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+    <table class="w-full text-left">
+        <thead>
+            <tr class="bg-slate-50/50 text-slate-400 text-[9px] uppercase font-black tracking-widest border-b border-slate-100">
+                <th class="px-8 py-5">Bài viết</th>
+                <th class="px-8 py-5">Tóm tắt</th>
+                <th class="px-8 py-5">Ngày đăng</th>
+                <th class="px-8 py-5 text-center">Thao tác</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+            <?php foreach($news as $n): ?>
+            <tr class="hover:bg-slate-50 transition-colors">
+                <td class="px-8 py-5">
+                    <div class="flex items-center gap-4">
+                        <img src="../assets/uploads/<?= $n['image'] ?: 'default-news.jpg' ?>" class="w-12 h-12 rounded-xl object-cover shadow-sm">
+                        <div class="text-xs font-black text-slate-800 uppercase tracking-tighter leading-tight max-w-[200px] truncate"><?= htmlspecialchars($n['title']) ?></div>
+                    </div>
+                </td>
+                <td class="px-8 py-5">
+                    <p class="text-[10px] text-slate-400 font-medium italic line-clamp-2 max-w-sm"><?= htmlspecialchars($n['summary']) ?></p>
+                </td>
+                <td class="px-8 py-5">
+                    <span class="text-[10px] font-bold text-slate-400"><?= date('d/m/Y', strtotime($n['created_at'])) ?></span>
+                </td>
+                <td class="px-8 py-5">
+                    <div class="flex justify-center gap-3">
+                        <button onclick='openNewsModal("edit", <?= json_encode($n) ?>)' class="w-9 h-9 flex items-center justify-center bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><i class="fas fa-edit text-xs"></i></button>
+                        <a href="../news-detail.php?id=<?= $n['id'] ?>" target="_blank" class="w-9 h-9 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-600 hover:text-white transition-all"><i class="fas fa-eye text-xs"></i></a>
+                        <button onclick="confirmDelete(<?= $n['id'] ?>)" class="w-9 h-9 flex items-center justify-center bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all"><i class="fas fa-trash-alt text-xs"></i></button>
+                    </div>
+                </td>
+            </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
 </div>
-<?php endif; ?>
+
+<?= renderAdminPagination($page, $total_pages, $_GET) ?>
 
 <div id="newsModal" class="fixed inset-0 bg-slate-900/60 z-[70] hidden flex items-center justify-center p-4 backdrop-blur-sm">
     <div class="bg-white rounded-[2rem] shadow-2xl transform transition-all scale-95 opacity-0 duration-300" id="modalContent">

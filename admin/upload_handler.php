@@ -1,4 +1,9 @@
 <?php
+session_start();
+if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'admin') {
+    exit('Access Denied');
+}
+
 if (isset($_FILES['upload']['name'])) {
     $file = $_FILES['upload']['name'];
     $filetmp = $_FILES['upload']['tmp_name'];

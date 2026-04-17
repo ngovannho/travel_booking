@@ -20,11 +20,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
     if ($user && password_verify($password, $user['password'])) {
         $_SESSION['user'] = $user;
-        if ($user['role'] == 'admin') {
-            header("Location: admin/index.php");
-        } else {
-            header("Location: index.php");
-        }
+        $redirect = $_GET['redirect'] ?? ($user['role'] == 'admin' ? 'admin/index.php' : 'index.php');
+        header("Location: " . $redirect);
         exit;
     } else {
         $error = "Tài khoản hoặc mật khẩu không chính xác!";

@@ -94,13 +94,7 @@ $promos = $stmt->fetchAll();
     </table>
 </div>
 
-<?php if($total_pages > 1): ?>
-<div class="mt-8 flex justify-center space-x-2">
-    <?php for($i = 1; $i <= $total_pages; $i++): ?>
-        <a href="?page=<?= $i ?>&search=<?= $search ?>" class="w-10 h-10 flex items-center justify-center rounded-xl text-[10px] font-black <?= $i == $page ? 'bg-blue-600 text-white' : 'bg-white text-slate-400 border border-slate-100' ?>"><?= $i ?></a>
-    <?php endfor; ?>
-</div>
-<?php endif; ?>
+<?= renderAdminPagination($page, $total_pages, $_GET) ?>
 
 <!-- Modal Thêm Mã -->
 <div id="promoModal" class="fixed inset-0 bg-slate-900/60 z-[70] hidden flex items-center justify-center p-4 backdrop-blur-sm">

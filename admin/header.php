@@ -8,7 +8,36 @@ if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'admin') {
 }
 
 function isActive($page) {
-    return strpos($_SERVER['PHP_SELF'], $page) !== false ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-slate-800 hover:text-white';
+    return strpos($_SERVER['PHP_SELF'], $page) !== false ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-white/5 hover:text-white';
+}
+
+/**
+ * Hiển thị thanh phân trang gọn (Ví dụ: 1 2 ... 10) cho trang quản trị
+ */
+function renderAdminPagination($current, $total, $queryParams = []) {
+    if ($total <= 1) return '';
+    
+    unset($queryParams['page']);
+    $queryString = http_build_query($queryParams);
+    $prefix = $queryString ? '?' . $queryString . '&' : '?';
+
+    $html = '<div class="mt-8 flex justify-center items-center space-x-2">';
+    $range = 1; 
+    
+    for ($i = 1; $i <= $total; $i++) {
+        if ($i == 1 || $i == $total || ($i >= $current - $range && $i <= $current + $range)) {
+            $activeClass = $i == $current 
+                ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' 
+                : 'bg-white text-slate-400 border border-slate-100 hover:text-blue-600';
+            
+            $html .= "<a href='{$prefix}page=$i' class='w-10 h-10 flex items-center justify-center rounded-xl text-[10px] font-black transition-all $activeClass'>$i</a>";
+        } elseif ($i == $current - $range - 1 || $i == $current + $range + 1) {
+            $html .= '<span class="text-slate-300 font-black px-1 self-center">...</span>';
+        }
+    }
+    
+    $html .= '</div>';
+    return $html;
 }
 ?>
 <!DOCTYPE html>
@@ -46,72 +75,91 @@ function isActive($page) {
                 </button>
             </div>
 
-            <nav class="mt-6 px-4 space-y-2">
-                <a href="index.php" class="flex items-center p-3 rounded-xl transition <?= isActive('index.php') ?>">
-                    <i class="fas fa-chart-line w-6 text-center"></i>
-                    <span class="menu-text ml-3 text-sm font-bold">Phân bổ & Xu hướng</span>
+            <nav class="mt-6 space-y-1">
+                <a href="index.php" class="flex items-center py-2.5 px-6 mx-2 rounded-xl transition-all duration-300 <?= isActive('index.php') ?>">
+                    <i class="fas fa-chart-line w-5 text-center"></i>
+                    <span class="menu-text ml-4 text-[11px] font-black uppercase tracking-widest">Phân bổ & Xu hướng</span>
                 </a>
 
-                <div class="pt-4 pb-2 px-3 text-xs font-bold text-gray-500 uppercase menu-text tracking-widest">Quản lý tour</div>
+                <!-- Nhóm Quản lý Tour -->
+                <div class="pt-4 group/menu">
+                    <div class="px-6 py-2 flex items-center justify-between text-[9px] font-black text-slate-600 uppercase tracking-[0.2em] cursor-default">
+                        <span>Quản lý tour</span>
+                        <i class="fas fa-chevron-down transition-transform duration-300 group-hover/menu:rotate-180"></i>
+                    </div>
+                    <div class="max-h-0 overflow-hidden group-hover/menu:max-h-[500px] transition-all duration-500 ease-in-out">
+                        <div class="space-y-1 py-2">
+                            <a href="categories.php" class="flex items-center py-2.5 px-8 mx-2 rounded-xl transition-all <?= isActive('categories.php') ?>">
+                                <i class="fas fa-th-large w-5 text-center"></i>
+                                <span class="menu-text ml-4 text-[10px] font-bold uppercase tracking-wider">Danh mục</span>
+                            </a>
+                            <a href="tours.php" class="flex items-center py-2.5 px-8 mx-2 rounded-xl transition-all <?= isActive('tours.php') ?>">
+                                <i class="fas fa-map-marked-alt w-5 text-center"></i>
+                                <span class="menu-text ml-4 text-[10px] font-bold uppercase tracking-wider">Sản phẩm Tour</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
                 
-                <a href="categories.php" class="flex items-center p-3 rounded-xl transition <?= isActive('categories.php') ?>">
-                    <i class="fas fa-th-large w-6 text-center"></i>
-                    <span class="menu-text ml-3 text-sm font-bold">Danh mục Tour</span>
-                </a>
-                
-                <a href="tours.php" class="flex items-center p-3 rounded-xl transition <?= isActive('tours.php') ?>">
-                    <i class="fas fa-map-marked-alt w-6 text-center"></i>
-                    <span class="menu-text ml-3 text-sm font-bold">Danh sách Tour</span>
-                </a>
+                <!-- Nhóm Giao dịch & Thành viên -->
+                <div class="pt-2 group/menu">
+                    <div class="px-6 py-2 flex items-center justify-between text-[9px] font-black text-slate-600 uppercase tracking-[0.2em] cursor-default">
+                        <span>Khách hàng & Giao dịch</span>
+                        <i class="fas fa-chevron-down transition-transform duration-300 group-hover/menu:rotate-180"></i>
+                    </div>
+                    <div class="max-h-0 overflow-hidden group-hover/menu:max-h-[500px] transition-all duration-500 ease-in-out">
+                        <div class="space-y-1 py-2">
+                            <a href="bookings.php" class="flex items-center py-2.5 px-8 mx-2 rounded-xl transition-all <?= isActive('bookings.php') ?>">
+                                <i class="fas fa-ticket-alt w-5 text-center"></i>
+                                <span class="menu-text ml-4 text-[10px] font-bold uppercase tracking-wider">Đơn hàng</span>
+                            </a>
+                            <a href="tour_reviews.php" class="flex items-center py-2.5 px-8 mx-2 rounded-xl transition-all <?= isActive('tour_reviews.php') ?>">
+                                <i class="fas fa-star w-5 text-center"></i>
+                                <span class="menu-text ml-4 text-[10px] font-bold uppercase tracking-wider">Đánh giá</span>
+                            </a>
+                            <a href="promos.php" class="flex items-center py-2.5 px-8 mx-2 rounded-xl transition-all <?= isActive('promos.php') ?>">
+                                <i class="fas fa-percentage w-5 text-center"></i>
+                                <span class="menu-text ml-4 text-[10px] font-bold uppercase tracking-wider">Mã giảm giá</span>
+                            </a>
+                            <a href="users.php" class="flex items-center py-2.5 px-8 mx-2 rounded-xl transition-all <?= isActive('users.php') ?>">
+                                <i class="fas fa-users w-5 text-center"></i>
+                                <span class="menu-text ml-4 text-[10px] font-bold uppercase tracking-wider">Người dùng</span>
+                            </a>
+                            <a href="ranks.php" class="flex items-center py-2.5 px-8 mx-2 rounded-xl transition-all <?= isActive('ranks.php') ?>">
+                                <i class="fas fa-medal w-5 text-center"></i>
+                                <span class="menu-text ml-4 text-[10px] font-bold uppercase tracking-wider">Hạng TV</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
 
-                <div class="pt-4 pb-2 px-3 text-xs font-bold text-gray-500 uppercase menu-text tracking-widest">Giao dịch & Người dùng</div>
+                <!-- Nhóm Hệ thống -->
+                <div class="pt-2 group/menu">
+                    <div class="px-6 py-2 flex items-center justify-between text-[9px] font-black text-slate-600 uppercase tracking-[0.2em] cursor-default">
+                        <span>Hệ thống</span>
+                        <i class="fas fa-chevron-down transition-transform duration-300 group-hover/menu:rotate-180"></i>
+                    </div>
+                    <div class="max-h-0 overflow-hidden group-hover/menu:max-h-[500px] transition-all duration-500 ease-in-out">
+                        <div class="space-y-1 py-2">
+                            <a href="news.php" class="flex items-center py-2.5 px-8 mx-2 rounded-xl transition-all <?= isActive('news.php') ?>">
+                                <i class="fas fa-newspaper w-5 text-center"></i>
+                                <span class="menu-text ml-4 text-[10px] font-bold uppercase tracking-wider">Tin tức</span>
+                            </a>
+                            <a href="profile.php" class="flex items-center py-2.5 px-8 mx-2 rounded-xl transition-all <?= isActive('profile.php') ?>">
+                                <i class="fas fa-user-cog w-5 text-center"></i>
+                                <span class="menu-text ml-4 text-[10px] font-bold uppercase tracking-wider">Hồ sơ Admin</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
 
-                <a href="bookings.php" class="flex items-center p-3 rounded-xl transition <?= isActive('bookings.php') ?>">
-                    <i class="fas fa-ticket-alt w-6 text-center"></i>
-                    <span class="menu-text ml-3 text-sm font-bold">Quản lý giao dịch</span>
-                </a>
-
-                <a href="momo_logs.php" class="flex items-center p-3 rounded-xl transition <?= isActive('momo_logs.php') ?>">
-                    <i class="fas fa-terminal w-6 text-center text-pink-400"></i>
-                    <span class="menu-text ml-3 text-sm font-bold">Log MoMo IPN</span>
-                </a>
-
-                <a href="tour_reviews.php" class="flex items-center p-3 rounded-xl transition <?= isActive('tour_reviews.php') ?>">
-                    <i class="fas fa-star w-6 text-center text-amber-400"></i>
-                    <span class="menu-text ml-3 text-sm font-bold">Đánh giá tour</span>
-                </a>
-
-                <a href="promos.php" class="flex items-center p-3 rounded-xl transition <?= isActive('promos.php') ?>">
-                    <i class="fas fa-percentage w-6 text-center text-emerald-400"></i>
-                    <span class="menu-text ml-3 text-sm font-bold">Mã giảm giá VIP</span>
-                </a>
-
-                <a href="users.php" class="flex items-center p-3 rounded-xl transition <?= isActive('users.php') ?>">
-                    <i class="fas fa-users w-6 text-center"></i>
-                    <span class="menu-text ml-3 text-sm font-bold">Quản lý người dùng</span>
-                </a>
-
-                <div class="pt-4 pb-2 px-3 text-xs font-bold text-gray-500 uppercase menu-text tracking-widest">Nội dung</div>
-
-                <a href="news.php" class="flex items-center p-3 rounded-xl transition <?= isActive('news.php') ?>">
-                    <i class="fas fa-newspaper w-6 text-center"></i>
-                    <span class="menu-text ml-3 text-sm font-bold">Tin tức</span>
-                </a>
-
-                <div class="pt-4 pb-2 px-3 text-xs font-bold text-gray-500 uppercase menu-text tracking-widest">Hệ thống</div>
-
-                <a href="profile.php" class="flex items-center p-3 rounded-xl transition <?= isActive('profile.php') ?>">
-                    <i class="fas fa-user-cog w-6 text-center"></i>
-                    <span class="menu-text ml-3 text-sm font-bold">Hồ sơ cá nhân</span>
-                </a>
-
-                <a href="../index.php" class="flex items-center p-3 hover:bg-emerald-600/20 text-emerald-400 rounded-xl transition">
+                <a href="../index.php" class="flex items-center py-2.5 px-6 mx-2 mt-4 hover:bg-emerald-600/20 text-emerald-400 rounded-xl transition">
                     <i class="fas fa-eye w-6 text-center"></i>
                     <span class="menu-text ml-3 text-sm font-bold">Xem trang chủ</span>
                 </a>
 
-                <div class="mt-10 border-t border-slate-800 pt-4">
-                    <a href="../logout.php" class="flex items-center p-3 hover:bg-red-600/20 text-red-400 rounded-xl transition">
+                <div class="mt-4 border-t border-slate-800 pt-4">
+                    <a href="../logout.php" class="flex items-center py-2.5 px-6 mx-2 hover:bg-red-600/20 text-red-400 rounded-xl transition">
                         <i class="fas fa-sign-out-alt w-6 text-center"></i>
                         <span class="menu-text ml-3 text-sm font-bold">Đăng xuất</span>
                     </a>
