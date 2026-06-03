@@ -41,7 +41,7 @@ Website đặt tour du lịch trực tuyến được xây dựng bằng PHP và
 1. Clone repository
 
 ```bash
-2. git clone https://github.com/your-username/travel-booking.git
+2. git clone https://github.com/ngovannho/travel_booking
 3. Import database từ thư mục DB
 4. Cấu hình kết nối database
 Chạy dự án bằng XAMPP: http://localhost/travel_booking
